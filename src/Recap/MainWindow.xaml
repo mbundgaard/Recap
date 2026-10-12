@@ -1,0 +1,305 @@
+<Window x:Class="Recap.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Recap" Height="760" Width="920" MinHeight="660" MinWidth="760"
+        Background="#14181D" WindowStartupLocation="CenterScreen"
+        Icon="Assets/icon.png">
+    <Window.Resources>
+        <Style x:Key="PrimaryButton" TargetType="Button">
+            <Setter Property="FocusVisualStyle" Value="{StaticResource KeyboardFocusVisual}" />
+            <Setter Property="Height" Value="52" />
+            <Setter Property="MinWidth" Value="150" />
+            <Setter Property="Padding" Value="22,0" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="FontSize" Value="15" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Root" Background="{TemplateBinding Background}" CornerRadius="14" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Root" Property="Opacity" Value="0.9" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Root" Property="Opacity" Value="0.45" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="SmallButton" TargetType="Button">
+            <Setter Property="FocusVisualStyle" Value="{StaticResource KeyboardFocusVisual}" />
+            <Setter Property="Height" Value="34" />
+            <Setter Property="Padding" Value="12,0" />
+            <Setter Property="BorderBrush" Value="#D7D1C6" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Background" Value="#FFFDF8" />
+            <Setter Property="Foreground" Value="#22272E" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Root" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="10" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Root" Property="Opacity" Value="0.88" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Root" Property="Opacity" Value="0.45" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="MeterProgress" TargetType="ProgressBar">
+            <Setter Property="Height" Value="10" />
+            <Setter Property="Foreground" Value="#59D48B" />
+            <Setter Property="Background" Value="#151A20" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ProgressBar">
+                        <Grid ClipToBounds="True">
+                            <Border Background="{TemplateBinding Background}" CornerRadius="5" />
+                            <Border x:Name="PART_Track" />
+                            <Grid x:Name="PART_Indicator" HorizontalAlignment="Left" ClipToBounds="True">
+                                <Border Background="{TemplateBinding Foreground}" CornerRadius="5" />
+                            </Grid>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style TargetType="ListViewItem">
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListViewItem">
+                        <ContentPresenter />
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style TargetType="ComboBox">
+            <Setter Property="Height" Value="34" />
+            <Setter Property="Background" Value="#FFFDF8" />
+            <Setter Property="BorderBrush" Value="#D7D1C6" />
+        </Style>
+    </Window.Resources>
+
+    <Grid x:Name="MainLayout" Margin="20">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition x:Name="RecorderColumn" Width="360" />
+            <ColumnDefinition x:Name="MeetingsGapColumn" Width="20" />
+            <ColumnDefinition x:Name="MeetingsColumn" Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <Border Background="#22272E" CornerRadius="26" Padding="24" BorderBrush="#323A44" BorderThickness="1">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <StackPanel>
+                    <Image Source="Assets/logo-dark.png" Width="190" Stretch="Uniform" HorizontalAlignment="Left" Margin="0,0,0,28" RenderOptions.BitmapScalingMode="HighQuality" AutomationProperties.Name="Recap" />
+
+                    <TextBlock x:Name="StatusText" Text="Ready" Foreground="#72C47B" FontSize="13" FontWeight="SemiBold" Margin="0,0,0,8" />
+                    <TextBlock x:Name="TimerText" Text="00:00:00" FontSize="54" FontWeight="Bold" Foreground="#FFFDF8" Margin="0,0,0,4" FontFamily="Segoe UI Semibold" />
+                    <TextBlock x:Name="HintText" Text="Record the conversation. Review it when you’re ready." FontSize="13" Foreground="#A9B0BA" TextWrapping="Wrap" Margin="0,0,0,22" />
+
+                    <ListBox x:Name="RecordingLanguageBox" SelectedValuePath="Code" SelectionMode="Single"
+                             Background="#171B20" BorderThickness="0" Padding="4"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                             AutomationProperties.Name="Transcription language">
+                        <ListBox.Template>
+                            <ControlTemplate TargetType="ListBox">
+                                <Border Background="{TemplateBinding Background}" CornerRadius="12" Padding="{TemplateBinding Padding}">
+                                    <ItemsPresenter />
+                                </Border>
+                            </ControlTemplate>
+                        </ListBox.Template>
+                        <ListBox.ItemsPanel>
+                            <ItemsPanelTemplate><UniformGrid Rows="1" /></ItemsPanelTemplate>
+                        </ListBox.ItemsPanel>
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="FocusVisualStyle" Value="{StaticResource KeyboardFocusVisual}" />
+                                <Setter Property="Foreground" Value="#A9B0BA" />
+                                <Setter Property="Cursor" Value="Hand" />
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                <Setter Property="AutomationProperties.Name" Value="{Binding Name}" />
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="ListBoxItem">
+                                            <Border x:Name="Option" CornerRadius="9" Background="Transparent" BorderBrush="Transparent" BorderThickness="1" Padding="8,10">
+                                                <TextBlock Text="{Binding Name}" HorizontalAlignment="Center" FontSize="13" FontWeight="SemiBold" Foreground="{TemplateBinding Foreground}" />
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="Option" Property="Background" Value="#323A44" />
+                                                    <Setter Property="Foreground" Value="#FFFDF8" />
+                                                </Trigger>
+                                                <Trigger Property="IsSelected" Value="True">
+                                                    <Setter TargetName="Option" Property="Background" Value="#FFFDF8" />
+                                                    <Setter Property="Foreground" Value="#22272E" />
+                                                </Trigger>
+                                                <Trigger Property="IsEnabled" Value="False">
+                                                    <Setter TargetName="Option" Property="Opacity" Value="0.45" />
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                    </ListBox>
+
+                    <Button x:Name="RecordButton" Content="Start recording" Style="{StaticResource PrimaryButton}" Background="#1E8E5A" Click="RecordButton_Click" HorizontalAlignment="Stretch" Margin="0,16,0,0" />
+
+                    <Border Height="1" Background="#323A44" Margin="0,26,0,22" />
+
+                    <TextBlock Text="Levels" Foreground="#FFFDF8" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,12" />
+                    <Grid Margin="0,0,0,0">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="10" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="100" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock Text="Meeting" Foreground="#A9B0BA" FontSize="12" VerticalAlignment="Center" />
+                        <ProgressBar x:Name="RemoteMeter" Grid.Column="1" Style="{StaticResource MeterProgress}" Minimum="0" Maximum="100" Value="0" />
+                        <TextBlock Grid.Row="2" Text="Mic" Foreground="#A9B0BA" FontSize="12" VerticalAlignment="Center" />
+                        <ProgressBar x:Name="MicrophoneMeter" Grid.Row="2" Grid.Column="1" Style="{StaticResource MeterProgress}" Minimum="0" Maximum="100" Value="0" />
+                    </Grid>
+                </StackPanel>
+                <Grid Grid.Row="2">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <Button Content="&#xE713;" FontFamily="Segoe MDL2 Assets" FontSize="18" Width="40" Padding="0" Background="Transparent" BorderThickness="0" Foreground="#A9B0BA" Style="{StaticResource SmallButton}" Click="OpenSettings_Click" HorizontalAlignment="Left" ToolTip="Settings" AutomationProperties.Name="Settings" />
+                    <Button x:Name="MeetingsToggleButton" Grid.Column="1" Content="&#xE76B;" FontFamily="Segoe MDL2 Assets"
+                            FontSize="18" Width="40" Padding="0" Margin="4,0,0,0" HorizontalAlignment="Left"
+                            Background="Transparent" BorderThickness="0" Foreground="#A9B0BA"
+                            Style="{StaticResource SmallButton}" Click="ToggleMeetings_Click"
+                            ToolTip="Hide meetings"
+                            AutomationProperties.Name="Hide meetings" />
+                </Grid>
+            </Grid>
+        </Border>
+
+        <Border x:Name="MeetingsPanel" Grid.Column="2" Background="#F7F1E7" CornerRadius="26" Padding="24" BorderBrush="#E0D8CB" BorderThickness="1">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <Grid Margin="0,0,0,18">
+                    <StackPanel>
+                        <TextBlock Text="Meetings" FontSize="27" FontWeight="Bold" Foreground="#22272E" />
+                        <TextBlock x:Name="ProcessingModeText" FontSize="13" Foreground="#6B6258" Margin="0,8,0,0" TextWrapping="Wrap" MaxWidth="520" HorizontalAlignment="Left" />
+                    </StackPanel>
+                </Grid>
+
+                <ListView Grid.Row="1" x:Name="RecordingsList" BorderThickness="0" Background="Transparent" ItemsSource="{Binding Recordings}" SelectionMode="Single" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                    <ListView.ItemTemplate>
+                        <DataTemplate>
+                            <Border BorderBrush="#E0D8CB" BorderThickness="1" CornerRadius="14" Background="#FFFDF8" Padding="18" Margin="0,0,0,10">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Margin="0,0,14,0">
+                                        <TextBlock Text="{Binding Title}" ToolTip="{Binding Title}" FontSize="17" FontWeight="SemiBold" Foreground="#22272E" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock FontSize="13" Foreground="#6B6258" Margin="0,6,0,0" TextWrapping="Wrap">
+                                            <Run Text="{Binding StartedDisplay, Mode=OneWay}" />
+                                            <Run Text="  ·  " />
+                                            <Run Text="{Binding DurationDisplay, Mode=OneWay}" />
+                                            <Run ToolTip="{Binding StatusDisplay}">
+                                                <Run.Style>
+                                                    <Style TargetType="Run">
+                                                        <Setter Property="Text" Value="{Binding MeetingStatusText, Mode=OneWay, StringFormat='  ·  {0}'}" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding CanOpen}" Value="True">
+                                                                <Setter Property="Foreground" Value="#176B44" />
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding ProcessingFailed}" Value="True">
+                                                                <Setter Property="Foreground" Value="#984422" />
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding IsProcessing}" Value="True">
+                                                                <Setter Property="Text" Value="" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Run.Style>
+                                            </Run>
+                                        </TextBlock>
+                                    </StackPanel>
+                                    <Button Grid.Column="1" Content="{Binding PrimaryActionText}" Width="106" VerticalAlignment="Center"
+                                            IsEnabled="{Binding CanUsePrimaryAction}" Click="MeetingAction_Click"
+                                            ToolTip="{Binding PrimaryActionHint}" AutomationProperties.Name="{Binding PrimaryActionText}">
+                                        <Button.Style>
+                                            <Style TargetType="Button" BasedOn="{StaticResource SmallButton}">
+                                                <Setter Property="Background" Value="#FFFDF8" />
+                                                <Setter Property="BorderBrush" Value="#1E8E5A" />
+                                                <Setter Property="Foreground" Value="#176B44" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding CanOpen}" Value="True">
+                                                        <Setter Property="Background" Value="#22272E" />
+                                                        <Setter Property="BorderBrush" Value="#22272E" />
+                                                        <Setter Property="Foreground" Value="#FFFDF8" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Button.Style>
+                                    </Button>
+                                    <ProgressBar Grid.Row="2" Grid.ColumnSpan="2" Height="5" Margin="0,8,0,0"
+                                                 Minimum="0" Maximum="100" Value="{Binding ProcessingPercent, Mode=OneWay}"
+                                                 IsIndeterminate="{Binding IsProgressIndeterminate}"
+                                                 Foreground="#1E8E5A" Background="#E0D8CB" BorderThickness="0"
+                                                 ToolTip="Estimated recognition progress from audio timestamps; silence may pause updates."
+                                                 AutomationProperties.Name="Speech recognition progress">
+                                        <ProgressBar.Style>
+                                            <Style TargetType="ProgressBar">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding ShowProgress}" Value="True">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </ProgressBar.Style>
+                                    </ProgressBar>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

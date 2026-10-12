@@ -1,0 +1,59 @@
+# Build output
+artifacts/
+bin/
+obj/
+[Bb]in/
+[Oo]bj/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Rider
+.idea/
+
+# VS Code
+.vscode/
+
+# NuGet
+*.nupkg
+packages/
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local recordings / generated data
+Recordings/
+
+# Local app settings and backups may contain API keys (at any depth)
+settings.json
+settings.json.*
+.env
+.env.*
+!.env.example
+*.pfx
+*.p12
+*.key
+*.pem
+
+# Private meeting data, including copies outside Recordings/
+*.wav
+*.mp3
+*.m4a
+*.flac
+metadata.json
+speaker-map.json
+raw-*-transcript.json
+merged-transcript.md
+final-transcript.md
+summary.md
+
+# Local reference screenshots are not public documentation
+/docs/screenshots/

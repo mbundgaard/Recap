@@ -1,0 +1,521 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Recap UI Mockup</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #111827;
+      --panel-2: #1f2937;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --line: rgba(255,255,255,.09);
+      --accent: #38bdf8;
+      --accent-2: #22c55e;
+      --danger: #fb7185;
+      --card: #182235;
+      --shadow: 0 24px 70px rgba(0,0,0,.45);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background:
+        radial-gradient(circle at top left, rgba(56,189,248,.18), transparent 34%),
+        radial-gradient(circle at bottom right, rgba(34,197,94,.12), transparent 30%),
+        #020617;
+      color: var(--text);
+    }
+
+    .desktop-note {
+      position: fixed;
+      left: 24px;
+      top: 20px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+      max-width: 310px;
+    }
+
+    .app {
+      width: 460px;
+      height: 780px;
+      background: linear-gradient(180deg, #111827 0%, #0f172a 100%);
+      border: 1px solid rgba(255,255,255,.11);
+      border-radius: 34px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .titlebar {
+      height: 42px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      border-bottom: 1px solid var(--line);
+      -webkit-app-region: drag;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .window-controls {
+      display: flex;
+      gap: 7px;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #334155;
+    }
+
+    .dot.close { background: #fb7185; }
+    .dot.min { background: #fbbf24; }
+    .dot.max { background: #22c55e; }
+
+    .content {
+      flex: 1;
+      padding: 22px 20px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+
+    .logo {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .logo-mark {
+      width: 38px;
+      height: 38px;
+      border-radius: 14px;
+      background: linear-gradient(135deg, var(--accent), #2563eb);
+      display: grid;
+      place-items: center;
+      font-weight: 800;
+      color: white;
+      box-shadow: 0 10px 28px rgba(56,189,248,.24);
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 22px;
+      letter-spacing: -.04em;
+    }
+
+    .subtitle {
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .gear {
+      width: 36px;
+      height: 36px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.03);
+      color: var(--muted);
+      display: grid;
+      place-items: center;
+      font-size: 18px;
+    }
+
+    .recorder-card {
+      border-radius: 28px;
+      background:
+        linear-gradient(180deg, rgba(56,189,248,.12), transparent 70%),
+        var(--card);
+      border: 1px solid var(--line);
+      padding: 22px;
+      text-align: center;
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      height: 28px;
+      padding: 0 11px;
+      border-radius: 999px;
+      background: rgba(34,197,94,.12);
+      color: #86efac;
+      font-size: 12px;
+      margin-bottom: 15px;
+    }
+
+    .pulse {
+      width: 7px;
+      height: 7px;
+      background: var(--accent-2);
+      border-radius: 50%;
+      box-shadow: 0 0 0 5px rgba(34,197,94,.12);
+    }
+
+    .timer {
+      font-variant-numeric: tabular-nums;
+      font-size: 46px;
+      font-weight: 750;
+      letter-spacing: -.05em;
+      margin-bottom: 8px;
+    }
+
+    .source {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+      margin-bottom: 22px;
+    }
+
+    .primary-button {
+      width: 100%;
+      height: 56px;
+      border: 0;
+      border-radius: 18px;
+      background: linear-gradient(135deg, var(--danger), #ef4444);
+      color: white;
+      font-weight: 750;
+      font-size: 16px;
+      box-shadow: 0 16px 34px rgba(239,68,68,.26);
+      cursor: pointer;
+    }
+
+    .primary-button.start {
+      background: linear-gradient(135deg, var(--accent-2), #16a34a);
+      box-shadow: 0 16px 34px rgba(34,197,94,.24);
+    }
+
+    .meters {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .meter {
+      background: rgba(255,255,255,.04);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 11px;
+      text-align: left;
+    }
+
+    .meter-label {
+      color: var(--muted);
+      font-size: 11px;
+      margin-bottom: 8px;
+    }
+
+    .bars {
+      height: 7px;
+      background: #0b1220;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    .bar-fill {
+      height: 100%;
+      border-radius: 999px;
+      background: var(--accent);
+    }
+
+    .bar-fill.mic { width: 58%; background: #a78bfa; }
+    .bar-fill.remote { width: 82%; }
+
+    .section-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 2px;
+    }
+
+    .section-title h2 {
+      font-size: 15px;
+      margin: 0;
+      letter-spacing: -.02em;
+    }
+
+    .section-title a {
+      color: var(--accent);
+      text-decoration: none;
+      font-size: 12px;
+    }
+
+    .recordings {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      overflow: hidden;
+    }
+
+    .recording {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      padding: 12px;
+      background: rgba(255,255,255,.035);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+    }
+
+    .file-icon {
+      width: 42px;
+      height: 42px;
+      border-radius: 14px;
+      background: rgba(56,189,248,.12);
+      color: var(--accent);
+      display: grid;
+      place-items: center;
+      font-size: 18px;
+      flex: 0 0 auto;
+    }
+
+    .recording-main { min-width: 0; flex: 1; }
+
+    .recording-title {
+      font-size: 14px;
+      font-weight: 650;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .recording-meta {
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 3px;
+    }
+
+    .recording-action {
+      flex: 0 0 auto;
+      height: 32px;
+      min-width: 88px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: rgba(56,189,248,.12);
+      color: #7dd3fc;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .recording-action.download {
+      background: rgba(34,197,94,.12);
+      color: #86efac;
+    }
+
+    .recording-action.working {
+      background: rgba(251,191,36,.12);
+      color: #fde68a;
+    }
+
+    .live-window {
+      position: fixed;
+      right: 28px;
+      top: 56px;
+      width: 430px;
+      height: 560px;
+      padding: 0;
+      border-radius: 24px;
+      background: rgba(15,23,42,.95);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow);
+      color: var(--text);
+      overflow: hidden;
+    }
+
+    .live-titlebar {
+      height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      border-bottom: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .live-body {
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .live-line {
+      padding: 12px;
+      border-radius: 16px;
+      background: rgba(255,255,255,.04);
+      border: 1px solid var(--line);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .speaker {
+      display: block;
+      color: var(--accent);
+      font-size: 11px;
+      font-weight: 750;
+      margin-bottom: 4px;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }
+
+    .partial {
+      color: var(--muted);
+      font-style: italic;
+    }
+
+    .live-footer {
+      position: absolute;
+      left: 16px;
+      right: 16px;
+      bottom: 16px;
+      display: flex;
+      gap: 8px;
+    }
+
+    .secondary-button {
+      flex: 1;
+      height: 36px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.04);
+      color: var(--text);
+      font-size: 12px;
+    }
+
+    @media (max-width: 920px) {
+      .desktop-note, .live-window { display: none; }
+      body { padding: 16px; }
+      .app { width: min(460px, 100vw - 32px); height: min(780px, 100vh - 32px); }
+    }
+  </style>
+</head>
+<body>
+  <div class="desktop-note">
+    <strong>Recap mockup</strong><br />
+    Small always-on-desktop Windows app, roughly phone sized. It does not integrate with meeting providers: press start, press stop, then manage the saved recording.
+  </div>
+
+  <main class="app" aria-label="Recap app mockup">
+    <div class="titlebar">
+      <span>Recap</span>
+      <div class="window-controls" aria-hidden="true">
+        <span class="dot min"></span>
+        <span class="dot max"></span>
+        <span class="dot close"></span>
+      </div>
+    </div>
+
+    <section class="content">
+      <header class="header">
+        <div class="logo">
+          <div class="logo-mark">R</div>
+          <div>
+            <h1>Recap</h1>
+            <div class="subtitle">Local meeting recorder</div>
+          </div>
+        </div>
+        <button class="gear" title="Settings">⚙</button>
+      </header>
+
+      <section class="recorder-card">
+        <div class="status-pill"><span class="pulse"></span> Recording now</div>
+        <div class="timer">00:18:42</div>
+        <div class="source">Capturing system audio and microphone.<br />No meeting integration active.</div>
+        <button class="primary-button">Stop recording</button>
+        <button class="secondary-button" style="width:100%; margin-top:10px;">Open live transcript</button>
+
+        <div class="meters">
+          <div class="meter">
+            <div class="meter-label">Meeting audio</div>
+            <div class="bars"><div class="bar-fill remote"></div></div>
+          </div>
+          <div class="meter">
+            <div class="meter-label">Microphone</div>
+            <div class="bars"><div class="bar-fill mic"></div></div>
+          </div>
+        </div>
+      </section>
+
+      <div class="section-title">
+        <h2>Recent recordings</h2>
+        <a href="#">Open folder</a>
+      </div>
+
+      <section class="recordings">
+        <article class="recording">
+          <div class="file-icon">🎙</div>
+          <div class="recording-main">
+            <div class="recording-title">Product sync</div>
+            <div class="recording-meta">Today, 09:31 · 42 min · transcript ready</div>
+          </div>
+          <button class="recording-action download">Download</button>
+        </article>
+
+        <article class="recording">
+          <div class="file-icon">🎙</div>
+          <div class="recording-main">
+            <div class="recording-title">Untitled recording</div>
+            <div class="recording-meta">Yesterday, 14:04 · 27 min · audio only</div>
+          </div>
+          <button class="recording-action">Transcribe</button>
+        </article>
+
+        <article class="recording">
+          <div class="file-icon">🎙</div>
+          <div class="recording-main">
+            <div class="recording-title">Customer call - onboarding</div>
+            <div class="recording-meta">Mon, 11:15 · Azure STT running…</div>
+          </div>
+          <button class="recording-action working">Working</button>
+        </article>
+      </section>
+    </section>
+  </main>
+
+  <aside class="live-window" aria-label="Always-on-top live transcript mockup">
+    <div class="live-titlebar">
+      <span>Live transcript · always on top</span>
+      <span>— □ ×</span>
+    </div>
+    <div class="live-body">
+      <div class="live-line">
+        <span class="speaker">Me</span>
+        I think we should keep the first version focused on recording and then do the final transcription afterwards.
+      </div>
+      <div class="live-line">
+        <span class="speaker">Others</span>
+        That makes sense. The live view can be useful during the call, but the final transcript should be generated from the saved audio.
+      </div>
+      <div class="live-line partial">
+        <span class="speaker">Others · partial</span>
+        Maybe we can add a setting so the transcript window stays...
+      </div>
+    </div>
+    <div class="live-footer">
+      <button class="secondary-button">Copy text</button>
+      <button class="secondary-button">Hide window</button>
+    </div>
+  </aside>
+</body>
+</html>

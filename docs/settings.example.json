@@ -1,0 +1,20 @@
+{
+  "UserName": "",
+  "RecordingsFolder": "%LOCALAPPDATA%\\Recap\\Recordings",
+  "LogsFolder": "%LOCALAPPDATA%\\Recap\\Logs",
+  "SpeechProviderId": "azure-speech",
+  "SpeechRecognitionPaused": true,
+  "LlmProviderId": "openai-compatible",
+  "AzureSpeech": {
+    "Region": "",
+    "Endpoint": "",
+    "SubscriptionKey": "",
+    "RecognitionLanguage": "en-US",
+    "ResourceName": ""
+  },
+  "OpenAiCompatible": {
+    "Endpoint": "",
+    "ApiKey": "",
+    "ModelOrDeploymentName": ""
+  }
+}

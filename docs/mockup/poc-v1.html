@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Recap POC v1 Mockup</title>
+  <style>
+    :root {
+      --bg: #f4f6f8;
+      --panel: #ffffff;
+      --text: #172033;
+      --muted: #6b7280;
+      --line: #e5e7eb;
+      --blue: #2563eb;
+      --green: #16a34a;
+      --red: #dc2626;
+      --amber: #d97706;
+      --shadow: 0 18px 60px rgba(15, 23, 42, .16);
+      font-family: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      display: grid;
+      place-items: center;
+      color: var(--text);
+    }
+
+    .app {
+      width: 520px;
+      height: 720px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .titlebar {
+      height: 42px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 14px;
+      border-bottom: 1px solid var(--line);
+      background: #fbfbfc;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .controls { display: flex; gap: 14px; font-size: 14px; }
+
+    main { padding: 22px; flex: 1; display: flex; flex-direction: column; gap: 18px; }
+
+    .header { display: flex; justify-content: space-between; align-items: center; }
+    h1 { margin: 0; font-size: 24px; letter-spacing: -.03em; }
+    .sub { color: var(--muted); font-size: 13px; margin-top: 3px; }
+
+    .status { color: var(--green); font-size: 13px; font-weight: 600; }
+    .status.recording { color: var(--red); }
+
+    .record-card {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 22px;
+      background: linear-gradient(180deg, #ffffff, #fafafa);
+    }
+
+    .record-top { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+
+    .timer {
+      font-size: 44px;
+      font-weight: 750;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -.05em;
+    }
+
+    .primary {
+      height: 54px;
+      padding: 0 24px;
+      border: 0;
+      border-radius: 14px;
+      color: white;
+      background: var(--green);
+      font-weight: 700;
+      font-size: 15px;
+      min-width: 150px;
+    }
+
+    .primary.stop { background: var(--red); }
+
+    .hint { color: var(--muted); font-size: 13px; margin-top: 10px; line-height: 1.4; }
+
+    .meters { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 18px; }
+    .meter { border: 1px solid var(--line); border-radius: 14px; padding: 12px; background: white; }
+    .meter-title { font-size: 12px; color: var(--muted); margin-bottom: 8px; display: flex; justify-content: space-between; }
+    .bar { height: 8px; border-radius: 99px; background: #edf0f3; overflow: hidden; }
+    .fill { height: 100%; border-radius: 99px; background: var(--blue); width: 74%; }
+    .fill.mic { background: #7c3aed; width: 46%; }
+
+    .section-head { display: flex; justify-content: space-between; align-items: center; margin-top: 4px; }
+    h2 { margin: 0; font-size: 16px; }
+    .link { color: var(--blue); font-size: 13px; text-decoration: none; }
+
+    .list { display: flex; flex-direction: column; gap: 9px; overflow: auto; padding-right: 2px; }
+
+    .row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 12px;
+      align-items: center;
+      padding: 13px;
+      border: 1px solid var(--line);
+      border-radius: 15px;
+      background: #fff;
+    }
+
+    .title { font-weight: 650; font-size: 14px; margin-bottom: 4px; }
+    .meta { color: var(--muted); font-size: 12px; }
+    .actions { display: flex; gap: 7px; }
+
+    .small {
+      height: 34px;
+      border: 1px solid var(--line);
+      background: white;
+      border-radius: 10px;
+      padding: 0 11px;
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .small.blue { color: white; border-color: var(--blue); background: var(--blue); }
+    .small.green { color: white; border-color: var(--green); background: var(--green); }
+    .small.amber { color: white; border-color: var(--amber); background: var(--amber); }
+
+    .footer {
+      padding: 10px 22px 16px;
+      color: var(--muted);
+      font-size: 12px;
+      border-top: 1px solid var(--line);
+      background: #fbfbfc;
+    }
+  </style>
+</head>
+<body>
+  <section class="app">
+    <div class="titlebar">
+      <span>Recap</span>
+      <div class="controls"><span>—</span><span>□</span><span>×</span></div>
+    </div>
+
+    <main>
+      <header class="header">
+        <div>
+          <h1>Recap</h1>
+          <div class="sub">Record locally. Transcribe when you choose.</div>
+        </div>
+        <div class="status recording">● Recording</div>
+      </header>
+
+      <section class="record-card">
+        <div class="record-top">
+          <div>
+            <div class="timer">00:18:42</div>
+            <div class="hint">Capturing meeting audio and microphone to a local folder.</div>
+          </div>
+          <button class="primary stop">Stop</button>
+        </div>
+
+        <div class="meters">
+          <div class="meter">
+            <div class="meter-title"><span>Meeting audio</span><span>remote.wav</span></div>
+            <div class="bar"><div class="fill"></div></div>
+          </div>
+          <div class="meter">
+            <div class="meter-title"><span>Microphone</span><span>microphone.wav</span></div>
+            <div class="bar"><div class="fill mic"></div></div>
+          </div>
+        </div>
+      </section>
+
+      <div class="section-head">
+        <h2>Recordings</h2>
+        <a class="link" href="#">Open recordings folder</a>
+      </div>
+
+      <section class="list">
+        <article class="row">
+          <div>
+            <div class="title">Product sync</div>
+            <div class="meta">Today 09:31 · 42 min · final transcript ready</div>
+          </div>
+          <div class="actions">
+            <button class="small">Rename</button>
+            <button class="small green">Download</button>
+          </div>
+        </article>
+
+        <article class="row">
+          <div>
+            <div class="title">Untitled recording</div>
+            <div class="meta">Yesterday 14:04 · 27 min · audio only</div>
+          </div>
+          <div class="actions">
+            <button class="small">Rename</button>
+            <button class="small blue">Transcribe</button>
+          </div>
+        </article>
+
+        <article class="row">
+          <div>
+            <div class="title">Customer onboarding</div>
+            <div class="meta">Mon 11:15 · 58 min · transcribing with Azure STT</div>
+          </div>
+          <div class="actions">
+            <button class="small">Rename</button>
+            <button class="small amber">Working</button>
+          </div>
+        </article>
+      </section>
+    </main>
+
+    <div class="footer">
+      Local storage: %LOCALAPPDATA%\Recap\Recordings · No meeting-provider integration
+    </div>
+  </section>
+</body>
+</html>

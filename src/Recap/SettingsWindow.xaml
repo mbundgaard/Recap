@@ -1,0 +1,260 @@
+<Window x:Class="Recap.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Settings" Height="740" Width="900" MinHeight="640" MinWidth="760"
+        Background="#14181D" WindowStartupLocation="CenterOwner"
+        Icon="Assets/icon.png">
+    <Window.Resources>
+        <Style x:Key="PanelTitle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="18" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="#20252B" />
+            <Setter Property="Margin" Value="0,0,0,14" />
+        </Style>
+        <Style x:Key="FieldLabel" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="#665E55" />
+            <Setter Property="Margin" Value="0,0,0,6" />
+        </Style>
+        <Style x:Key="HelpText" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#766D63" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Margin" Value="0,8,0,0" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+        <Style TargetType="TextBox">
+            <Setter Property="Height" Value="36" />
+            <Setter Property="Padding" Value="10,6" />
+            <Setter Property="Background" Value="#FFFDF8" />
+            <Setter Property="BorderBrush" Value="#D4CABC" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="FontSize" Value="13" />
+        </Style>
+        <Style TargetType="PasswordBox">
+            <Setter Property="Height" Value="36" />
+            <Setter Property="Padding" Value="10,6" />
+            <Setter Property="Background" Value="#FFFDF8" />
+            <Setter Property="BorderBrush" Value="#D4CABC" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="FontSize" Value="13" />
+        </Style>
+        <Style TargetType="ComboBox">
+            <Setter Property="Height" Value="36" />
+            <Setter Property="Padding" Value="6,4" />
+            <Setter Property="Background" Value="#FFFDF8" />
+            <Setter Property="BorderBrush" Value="#D4CABC" />
+            <Setter Property="FontSize" Value="13" />
+        </Style>
+        <Style x:Key="DeskButton" TargetType="Button">
+            <Setter Property="FocusVisualStyle" Value="{StaticResource KeyboardFocusVisual}" />
+            <Setter Property="Height" Value="38" />
+            <Setter Property="Padding" Value="16,0" />
+            <Setter Property="BorderBrush" Value="#D4CABC" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Background" Value="#FFFDF8" />
+            <Setter Property="Foreground" Value="#20252B" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Root" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="11" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Root" Property="Opacity" Value="0.88" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Root" Property="Opacity" Value="0.45" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="DarkButton" TargetType="Button" BasedOn="{StaticResource DeskButton}">
+            <Setter Property="Background" Value="#20252B" />
+            <Setter Property="Foreground" Value="#FFFDF8" />
+            <Setter Property="BorderBrush" Value="#20252B" />
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="20">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="260" />
+            <ColumnDefinition Width="20" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+        <Border Background="#22272E" BorderBrush="#323A44" BorderThickness="1" CornerRadius="26" Padding="24">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <StackPanel>
+                    <TextBlock Text="Settings" FontSize="28" FontWeight="Bold" Foreground="#FFFDF8" />
+                    <TextBlock Text="Make Recap work for you." Foreground="#A9B0BA" Margin="0,8,0,28" />
+                    <ListBox x:Name="SettingsNavigation" Background="Transparent" BorderThickness="0" SelectionChanged="SettingsNavigation_SelectionChanged" AutomationProperties.Name="Settings sections">
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="FocusVisualStyle" Value="{StaticResource KeyboardFocusVisual}" />
+                                <Setter Property="Foreground" Value="#A9B0BA" />
+                                <Setter Property="Margin" Value="0,0,0,6" />
+                                <Setter Property="Cursor" Value="Hand" />
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="ListBoxItem">
+                                            <Border x:Name="NavigationItem" Background="Transparent" CornerRadius="10" BorderBrush="Transparent" BorderThickness="1" Padding="12,13">
+                                                <ContentPresenter />
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="NavigationItem" Property="Background" Value="#323A44" /></Trigger>
+                                                <Trigger Property="IsSelected" Value="True">
+                                                    <Setter TargetName="NavigationItem" Property="Background" Value="#FFFDF8" />
+                                                    <Setter Property="Foreground" Value="#22272E" />
+                                                    <Setter Property="FontWeight" Value="SemiBold" />
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                        <ListBoxItem Content="General" />
+                        <ListBoxItem Content="Speech to text" />
+                        <ListBoxItem Content="Transcript and summary" />
+                    </ListBox>
+                </StackPanel>
+                <StackPanel Grid.Row="2">
+                    <TextBlock Text="Save applies all sections." Foreground="#A9B0BA" FontSize="12" Margin="0,0,0,12" />
+                    <Button Content="Save settings" Background="#1E8E5A" BorderBrush="#1E8E5A" Style="{StaticResource DarkButton}" Click="Save_Click" IsDefault="True" Margin="0,0,0,8" />
+                    <Button Content="Cancel" Style="{StaticResource DeskButton}" IsCancel="True" />
+                </StackPanel>
+            </Grid>
+        </Border>
+        <Border Grid.Column="2" Background="#F7F1E7" CornerRadius="26" BorderBrush="#DED4C6" BorderThickness="1" Padding="24">
+        <Grid>
+            <Grid.RowDefinitions><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+        <ScrollViewer x:Name="SettingsContentScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel>
+                <Border x:Name="ProfileSection">
+                    <StackPanel>
+                        <TextBlock Text="General" Style="{StaticResource PanelTitle}" />
+                        <CheckBox x:Name="AutomaticProcessingBox" Content="Automatic meeting processing"
+                                  Foreground="#20252B" FontSize="13" Margin="0,0,0,0" />
+                        <TextBlock Text="Prepare audio and recognize speech automatically. Turn off on an unreliable connection; individual meetings can still be processed manually. Final transcript creation stays manual."
+                                   Style="{StaticResource HelpText}" Margin="0,8,0,22" />
+                        <TextBlock Text="Your name" Style="{StaticResource FieldLabel}" />
+                        <TextBox x:Name="UserNameBox" MaxLength="100" AutomationProperties.Name="Your name" />
+                        <TextBlock Text="Used for your microphone speech in transcripts. Recreate an existing transcript to apply a changed name." Style="{StaticResource HelpText}" />
+                    </StackPanel>
+                </Border>
+                <Border x:Name="StorageSection" Margin="0,26,0,0">
+                    <StackPanel>
+                        <TextBlock Text="Local storage" Style="{StaticResource PanelTitle}" />
+                        <TextBlock Text="Recordings folder" Style="{StaticResource FieldLabel}" />
+                        <TextBox x:Name="RecordingsFolderBox" />
+                        <TextBlock Text="Logs folder" Style="{StaticResource FieldLabel}" Margin="0,16,0,6" />
+                        <TextBox x:Name="LogsFolderBox" />
+                        <CheckBox x:Name="PreserveRawFilesBox" Foreground="#20252B" Margin="0,16,0,0">
+                            <TextBlock Text="Keep original audio after preparation (uses more storage)" TextWrapping="Wrap" />
+                        </CheckBox>
+                        <TextBlock Text="Folder changes apply after restarting Recap." Style="{StaticResource HelpText}" />
+                    </StackPanel>
+                </Border>
+
+                <Border x:Name="DevicesSection" Margin="0,26,0,0">
+                    <StackPanel>
+                        <TextBlock Text="Devices" Style="{StaticResource PanelTitle}" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="18" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="Meeting audio device" Style="{StaticResource FieldLabel}" />
+                                <ComboBox x:Name="RemoteDeviceBox" DisplayMemberPath="Name" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="Microphone device" Style="{StaticResource FieldLabel}" />
+                                <ComboBox x:Name="MicrophoneDeviceBox" DisplayMemberPath="Name" />
+                            </StackPanel>
+                        </Grid>
+                        <TextBlock Text="These choices are used when you start the next recording." Style="{StaticResource HelpText}" />
+                    </StackPanel>
+                </Border>
+
+                <Border x:Name="SpeechSection" Visibility="Collapsed">
+                    <StackPanel>
+                        <TextBlock Text="Speech to text" Style="{StaticResource PanelTitle}" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="18" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="Provider id" Style="{StaticResource FieldLabel}" />
+                                <ComboBox x:Name="SpeechProviderIdBox" SelectedValuePath="Tag">
+                                    <ComboBoxItem Content="Azure Speech" Tag="azure-speech" />
+                                </ComboBox>
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="Resource name" Style="{StaticResource FieldLabel}" />
+                                <TextBox x:Name="AzureSpeechResourceNameBox" />
+                            </StackPanel>
+                        </Grid>
+
+                        <TextBlock Text="Azure Speech endpoint" Style="{StaticResource FieldLabel}" Margin="0,16,0,6" />
+                        <TextBox x:Name="AzureSpeechEndpointBox" />
+
+                        <TextBlock Text="Subscription key" Style="{StaticResource FieldLabel}" Margin="0,16,0,6" />
+                        <PasswordBox x:Name="AzureSpeechKeyBox" />
+                    </StackPanel>
+                </Border>
+
+                <Border x:Name="LlmSection" Visibility="Collapsed">
+                    <StackPanel>
+                        <TextBlock Text="Transcript and summary" Style="{StaticResource PanelTitle}" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="18" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="Provider id" Style="{StaticResource FieldLabel}" />
+                                <ComboBox x:Name="LlmProviderIdBox" SelectedValuePath="Tag">
+                                    <ComboBoxItem Content="OpenAI-compatible" Tag="openai-compatible" />
+                                </ComboBox>
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="Model / deployment name" Style="{StaticResource FieldLabel}" />
+                                <TextBox x:Name="ModelDeploymentBox" />
+                            </StackPanel>
+                        </Grid>
+
+                        <TextBlock Text="Endpoint" Style="{StaticResource FieldLabel}" Margin="0,16,0,6" />
+                        <TextBox x:Name="OpenAiEndpointBox" />
+                        <TextBlock Text="For the Azure OpenAI SDK, use the base resource endpoint, e.g. https://YOUR-RESOURCE.cognitiveservices.azure.com/" Style="{StaticResource HelpText}" />
+
+                        <TextBlock Text="API key" Style="{StaticResource FieldLabel}" Margin="0,16,0,6" />
+                        <PasswordBox x:Name="OpenAiKeyBox" />
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+
+        <StackPanel Grid.Row="1" Margin="0,20,0,0">
+            <Separator Background="#DED4C6" Margin="0,0,0,12" />
+            <TextBlock Text="Settings file" Style="{StaticResource FieldLabel}" />
+            <TextBlock x:Name="SettingsPathText" Foreground="#766D63" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,12" />
+        </StackPanel>
+        </Grid>
+        </Border>
+    </Grid>
+</Window>
