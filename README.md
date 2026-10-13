@@ -4,6 +4,11 @@ Local Windows meeting recorder built with WPF and .NET 8. Capture system audio a
 your microphone, recognize speech, name speakers, and create a final transcript.
 No meeting-provider integration or calendar access is required.
 
+**[Download Recap for Windows (.exe)](https://github.com/mbundgaard/Recap/releases/latest/download/Recap-win-x64.exe)**
+
+Run the single executable; you do not need the source ZIP or a separate .NET installation.
+Enable automatic update checks in **Settings → General → Updates**.
+
 ## Getting started
 
 Source: <https://github.com/mbundgaard/Recap>

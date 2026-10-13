@@ -74,6 +74,9 @@ jobs:
           The opt-in updater checks published stable releases only, requires confirmation, and preserves settings and recordings.
           Releases older than 0.2.0 require one manual upgrade to obtain the updater.
           '@ | Set-Content release-notes.md
+          $downloadUrl = "https://github.com/$env:GH_REPO/releases/download/$env:GITHUB_REF_NAME/Recap-win-x64.exe"
+          $notes = Get-Content release-notes.md -Raw
+          "# [Download Recap for Windows — EXE]($downloadUrl)`n`nDownload and run the EXE. No source ZIP or separate .NET installation is needed. The manifest files are for the updater.`n`n$notes" | Set-Content release-notes.md
           $assets = @(Get-ChildItem release -File | ForEach-Object { $_.FullName })
           gh release create $env:GITHUB_REF_NAME @assets --verify-tag --draft --title "Recap $env:GITHUB_REF_NAME" --notes-file release-notes.md
           if ($LASTEXITCODE -ne 0) { throw 'Could not create draft release.' }
