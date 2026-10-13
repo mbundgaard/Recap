@@ -12,11 +12,12 @@ public sealed class RecordingMetadata
     public DateTime? EndedUtc { get; set; }
     public string Status { get; set; } = "recording";
     public string? TranscriptionLanguage { get; set; }
+    public TimeSpan? RecordedDuration { get; set; }
     public RecordingDevices Devices { get; set; } = new();
     public RecordingFiles Files { get; set; } = new();
 
     [JsonIgnore]
-    public TimeSpan Duration => (EndedLocal ?? DateTime.Now) - StartedLocal;
+    public TimeSpan Duration => RecordedDuration ?? (EndedLocal ?? DateTime.Now) - StartedLocal;
 }
 
 public sealed class RecordingDevices

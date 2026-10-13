@@ -9,8 +9,7 @@ public sealed class RecordingSession : IDisposable
     private readonly RecordingLibrary _library;
     private readonly AudioDeviceOption? _remoteDevice;
     private readonly AudioDeviceOption? _microphoneDevice;
-    private readonly object _remoteLock = new();
-    private readonly object _microphoneLock = new();
+    private RecordingTimeline? _timeline;
     private WasapiLoopbackCapture? _remoteCapture;
     private WasapiCapture? _microphoneCapture;
     private WaveFileWriter? _remoteWriter;
@@ -29,6 +28,17 @@ public sealed class RecordingSession : IDisposable
 
     public RecordingMetadata Metadata => _metadata ?? throw new InvalidOperationException("Session has not started.");
     public string Folder => _folder ?? throw new InvalidOperationException("Session has not started.");
+    public TimeSpan Elapsed => _timeline?.Elapsed ?? TimeSpan.Zero;
+    public bool IsPaused => _timeline?.IsPaused == true;
+
+    public void Pause()
+    {
+        _timeline?.Pause();
+        Metadata.RecordedDuration = Elapsed;
+        LevelsChanged?.Invoke(0, 0);
+    }
+
+    public void Resume() => _timeline?.Resume();
 
     public void Start(string transcriptionLanguage = "en-US")
     {
@@ -63,7 +73,6 @@ public sealed class RecordingSession : IDisposable
         _metadata.Files.RawMicrophone = "microphone.raw.wav";
         _remoteWriter = new WaveFileWriter(Path.Combine(_folder, _metadata.Files.RawRemote), _remoteCapture.WaveFormat);
         _remoteCapture.DataAvailable += RemoteDataAvailable;
-        _remoteCapture.StartRecording();
 
         var microphoneDevice = _microphoneDevice is null
             ? devices.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Communications)
@@ -71,6 +80,8 @@ public sealed class RecordingSession : IDisposable
         _microphoneCapture = new WasapiCapture(microphoneDevice);
         _microphoneWriter = new WaveFileWriter(Path.Combine(_folder, _metadata.Files.RawMicrophone), _microphoneCapture.WaveFormat);
         _microphoneCapture.DataAvailable += MicrophoneDataAvailable;
+        _timeline = new RecordingTimeline(_remoteWriter, _microphoneWriter);
+        _remoteCapture.StartRecording();
         _microphoneCapture.StartRecording();
     }
 
@@ -81,6 +92,8 @@ public sealed class RecordingSession : IDisposable
             return;
         }
 
+        _timeline?.Stop();
+        _metadata.RecordedDuration = Elapsed;
         if (_remoteCapture is not null)
         {
             _remoteCapture.DataAvailable -= RemoteDataAvailable;
@@ -103,22 +116,16 @@ public sealed class RecordingSession : IDisposable
 
     private void RemoteDataAvailable(object? sender, WaveInEventArgs e)
     {
-        lock (_remoteLock)
-        {
-            _remoteWriter?.Write(e.Buffer, 0, e.BytesRecorded);
-        }
-
+        _timeline?.Write(0, e.Buffer, e.BytesRecorded);
+        if (IsPaused) return;
         var remoteLevel = _remoteCapture is null ? 0 : AudioLevel.Calculate(e.Buffer, e.BytesRecorded, _remoteCapture.WaveFormat);
         LevelsChanged?.Invoke(remoteLevel, -1);
     }
 
     private void MicrophoneDataAvailable(object? sender, WaveInEventArgs e)
     {
-        lock (_microphoneLock)
-        {
-            _microphoneWriter?.Write(e.Buffer, 0, e.BytesRecorded);
-        }
-
+        _timeline?.Write(1, e.Buffer, e.BytesRecorded);
+        if (IsPaused) return;
         var microphoneLevel = _microphoneCapture is null ? 0 : AudioLevel.Calculate(e.Buffer, e.BytesRecorded, _microphoneCapture.WaveFormat);
         LevelsChanged?.Invoke(-1, microphoneLevel);
     }
@@ -136,16 +143,9 @@ public sealed class RecordingSession : IDisposable
         _microphoneCapture?.Dispose();
         _microphoneCapture = null;
 
-        lock (_remoteLock)
-        {
-            _remoteWriter?.Dispose();
-            _remoteWriter = null;
-        }
-
-        lock (_microphoneLock)
-        {
-            _microphoneWriter?.Dispose();
-            _microphoneWriter = null;
-        }
+        if (_timeline is not null) _timeline.Dispose();
+        else { _remoteWriter?.Dispose(); _microphoneWriter?.Dispose(); }
+        _remoteWriter = null;
+        _microphoneWriter = null;
     }
 }

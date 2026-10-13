@@ -14,6 +14,30 @@ Logs can contain local paths, resource endpoints and service diagnostics. Review
 redact them before sharing. Recognized speech text is not deliberately written to
 ordinary progress logs.
 
+## Local agent API
+
+Recap starts a local HTTP listener on a randomly assigned IPv4 loopback port. It never
+binds to a LAN interface. All endpoints require a random 256-bit bearer token, including
+`/skill`. The AI button deliberately copies that token into the clipboard prompt.
+The token is kept in memory, is not returned by HTTP, and expires when the app exits.
+Clipboard history or clipboard-sync software may retain the copied prompt. Share it only
+with a trusted agent, keep it out of logs and repositories, and restart Recap to revoke it.
+
+This token grants broad app control, including recording, deleting meetings and changing
+provider configuration. It is not a read-only integration. Confirmation fields are
+required for destructive actions but are not proof of human consent; the agent must
+obtain authorization from the owner. Meeting text and names must be treated as data,
+not instructions. The skill endpoint explains this boundary.
+
+The server rejects browser Origin headers, non-loopback Host headers and query parameters.
+It does not enable CORS, serve an unauthenticated web UI, expose a shell, or accept arbitrary
+file paths. Requests are bounded, known meeting-file downloads are authenticated, and
+provider key fields are write-only. Runtime HTTP logging is disabled. Other applications
+running as the same Windows user are not a security boundary: they may access the clipboard
+or the user's existing settings files. Do not proxy or forward this listener onto a network.
+
+## Updates
+
 The opt-in updater accepts only newer stable releases with an RSA-SHA256 manifest
 signature that verifies against the public key embedded in the installed executable.
 It also verifies the package's signed size and SHA-256 hash before replacement.

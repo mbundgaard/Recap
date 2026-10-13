@@ -5,7 +5,7 @@ using Recap.Recording;
 using Recap.Settings;
 using Recap.Transcription;
 
-// Offline regression checks: no microphone, Azure account, or network calls.
+// Local regression checks: no microphone or cloud calls. API tests use loopback HTTP.
 var root = Path.Combine(Path.GetTempPath(), "Recap-tests-" + Guid.NewGuid());
 try
 {
@@ -93,6 +93,7 @@ try
     Check(!File.Exists(Path.Combine(folder, "final-transcript.md")) && !File.Exists(Path.Combine(folder, "speaker-map.json")), "Reprocessing must invalidate dependent results");
     RunWindowSmokeTest(settings);
     await UpdaterTests.RunAsync(root);
+    await AgentTests.RunAsync(root);
     Console.WriteLine("PASS: parallel tracks, progress, partial failure/retry, disk readiness, active pause/resume, saved pause preference, meeting-row rendering.");
 }
 finally
@@ -192,6 +193,7 @@ static void RunWindowSmokeTest(AppSettings settings)
             processingTask.SetValue(window, Task.CompletedTask);
             CheckSettingsWindow(settings);
             CheckDetailWindow(window.Recordings.Single(), settings);
+            AgentTests.CheckController(window, settings);
         }
         catch (Exception ex) { failure = ex; }
         finally { window?.Close(); app?.Shutdown(); }

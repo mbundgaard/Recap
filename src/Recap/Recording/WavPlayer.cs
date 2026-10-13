@@ -14,6 +14,8 @@ public sealed class WavPlayer
     public event EventHandler? MediaOpened;
     public event EventHandler? MediaEnded;
     public event Action<Exception>? Failed;
+    public PlaybackState PlaybackState => _output?.PlaybackState ?? PlaybackState.Stopped;
+    public string? SourcePath { get; private set; }
     public Duration NaturalDuration => _reader is null ? Duration.Automatic : new Duration(_reader.TotalTime);
     public TimeSpan Position
     {
@@ -31,6 +33,7 @@ public sealed class WavPlayer
         try
         {
             _reader = new AudioFileReader(uri.LocalPath);
+            SourcePath = uri.LocalPath;
             _output = new WaveOutEvent { DesiredLatency = 100 };
             var output = _output;
             output.Init(_reader);
@@ -69,6 +72,7 @@ public sealed class WavPlayer
         output?.Dispose();
         _reader?.Dispose();
         _reader = null;
+        SourcePath = null;
     }
     private void ReportFailure(Exception exception)
     {

@@ -169,7 +169,14 @@
                         </ListBox.ItemContainerStyle>
                     </ListBox>
 
-                    <Button x:Name="RecordButton" Content="Start recording" Style="{StaticResource PrimaryButton}" Background="#1E8E5A" Click="RecordButton_Click" HorizontalAlignment="Stretch" Margin="0,16,0,0" />
+                    <Grid Margin="0,16,0,0">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                        <Button x:Name="RecordButton" Content="Start recording" Style="{StaticResource PrimaryButton}" Background="#1E8E5A" Click="RecordButton_Click" HorizontalAlignment="Stretch" />
+                        <Button x:Name="PauseRecordingButton" Grid.Column="1" Content="Pause" Visibility="Collapsed"
+                                Style="{StaticResource SmallButton}" Width="92" Margin="8,0,0,0" Padding="16,10"
+                                Background="#323A44" Foreground="#FFFDF8" BorderThickness="0"
+                                Click="PauseRecordingButton_Click" ToolTip="Pause or resume both recording tracks" />
+                    </Grid>
 
                     <Border Height="1" Background="#323A44" Margin="0,26,0,22" />
 
@@ -192,15 +199,20 @@
                     </Grid>
                 </StackPanel>
                 <Grid Grid.Row="2">
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                     <Button Content="&#xE713;" FontFamily="Segoe MDL2 Assets" FontSize="18" Width="40" Padding="0" Background="Transparent" BorderThickness="0" Foreground="#A9B0BA" Style="{StaticResource SmallButton}" Click="OpenSettings_Click" HorizontalAlignment="Left" ToolTip="Settings" AutomationProperties.Name="Settings" />
-                    <Button x:Name="MeetingsToggleButton" Grid.Column="1" Content="&#xE76B;" FontFamily="Segoe MDL2 Assets"
+                    <Button x:Name="AgentButton" Grid.Column="1" Content="AI" FontWeight="SemiBold" FontSize="13"
+                            Width="40" Padding="0" Margin="4,0,0,0" IsEnabled="False"
+                            Background="Transparent" BorderThickness="0" Foreground="#A9B0BA"
+                            Style="{StaticResource SmallButton}" Click="AgentButton_Click"
+                            ToolTip="Starting the local agent API" AutomationProperties.Name="Copy agent instructions" />
+                    <Button x:Name="MeetingsToggleButton" Grid.Column="2" Content="&#xE76B;" FontFamily="Segoe MDL2 Assets"
                             FontSize="18" Width="40" Padding="0" Margin="4,0,0,0" HorizontalAlignment="Left"
                             Background="Transparent" BorderThickness="0" Foreground="#A9B0BA"
                             Style="{StaticResource SmallButton}" Click="ToggleMeetings_Click"
                             ToolTip="Hide meetings"
                             AutomationProperties.Name="Hide meetings" />
-                    <Button x:Name="UpdateButton" Grid.Column="2" Content="Update available" Visibility="Collapsed"
+                    <Button x:Name="UpdateButton" Grid.Column="3" Content="Update available" Visibility="Collapsed"
                             Style="{StaticResource SmallButton}" HorizontalAlignment="Right" Margin="8,0,0,0"
                             Background="Transparent" Foreground="#FFFDF8" BorderThickness="0"
                             Click="UpdateButton_Click" ToolTip="Install the verified update and restart Recap" />

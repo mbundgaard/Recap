@@ -16,7 +16,9 @@ public partial class MainWindow
     private Task _installTask = Task.CompletedTask;
 
     private bool WorkPreventsUpdate => _session is not null || _recordingStarted is not null
-        || !_processingTask.IsCompleted || _isPausingProcessing || OwnedWindows.Count > 0;
+        || !_processingTask.IsCompleted || _isPausingProcessing
+        || _meetingWindows.Values.Any(window => window.IsBusy)
+        || OwnedWindows.Cast<Window>().Any(window => window.IsVisible);
 
     private async Task CheckForUpdatesAsync(bool manual)
     {
@@ -68,7 +70,7 @@ public partial class MainWindow
         await _installTask;
     }
 
-    private async Task InstallAvailableUpdateAsync()
+    private async Task InstallAvailableUpdateAsync(bool agentConfirmed = false)
     {
         var update = _availableUpdate;
         if (update is null || _isUpdating) return;
@@ -78,7 +80,7 @@ public partial class MainWindow
                 "Recap is busy", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
-        if (MessageBox.Show(this,
+        if (!agentConfirmed && MessageBox.Show(this,
             $"Download Recap {update.Manifest.Version} and restart?\n\nThe download will be verified against Recap's signed update manifest. Settings and recordings are preserved. The previous executable is retained for rollback.\n\nThe executable is not Authenticode-signed; Windows may still show an unknown-publisher warning.",
             "Update and restart", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes) return;
         if (WorkPreventsUpdate || _updateCancellation.IsCancellationRequested) return;
@@ -104,6 +106,7 @@ public partial class MainWindow
         catch (Exception ex)
         {
             AppLogger.Error(ex, "Update installation failed before shutdown.");
+            if (agentConfirmed) throw;
             MessageBox.Show(this, "The update could not be installed. Your existing application is unchanged.\n\n" + ex.Message,
                 "Update failed", MessageBoxButton.OK, MessageBoxImage.Error);
         }

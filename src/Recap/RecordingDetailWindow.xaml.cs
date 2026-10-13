@@ -9,6 +9,7 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using Recap.Logging;
 using Recap.Recording;
+using Recap.Settings;
 using Recap.Transcription;
 
 namespace Recap;
@@ -20,11 +21,14 @@ public partial class RecordingDetailWindow : Window
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
     private readonly RecordingLibrary _library;
+    private readonly AppSettings _settings;
     private readonly RecordingListItem _item;
     private readonly Action<RecordingListItem, string> _requestReprocess;
     private Dictionary<string, string> _savedSpeakerNames = [];
     private bool _wasProcessing;
     private bool IsProcessing => _item.IsProcessing || _item.IsManuallyQueued;
+    internal bool IsBusy => _isPreparing || _isGenerating || IsProcessing;
+    private bool _isGenerating;
     private bool SpeakerNamesSaved => SpeakersIdentified() && Speakers.All(x =>
         _savedSpeakerNames.TryGetValue(x.SourceLabel, out var name) && name == x.DisplayName.Trim());
     private readonly WavPlayer _player = new();
@@ -48,9 +52,10 @@ public partial class RecordingDetailWindow : Window
     public ObservableCollection<SpeakerNameItem> Speakers { get; } = [];
 
     public RecordingDetailWindow(RecordingLibrary library, RecordingListItem item,
-        Action<RecordingListItem, string> requestReprocess)
+        Action<RecordingListItem, string> requestReprocess, AppSettings? settings = null)
     {
         _library = library;
+        _settings = settings ?? App.Settings ?? AppSettingsStore.CreateDefaultSettings();
         _item = item;
         _requestReprocess = requestReprocess;
 
@@ -77,7 +82,7 @@ public partial class RecordingDetailWindow : Window
             _playbackTimer.Stop();
             PlayMixedButton.Content = "▶ Play";
             MixedAudioStatusText.Text = "Playback failed. Check your output device.";
-            MessageBox.Show(this, exception.Message, "Playback failed", MessageBoxButton.OK, MessageBoxImage.Error);
+            if (IsVisible) MessageBox.Show(this, exception.Message, "Playback failed", MessageBoxButton.OK, MessageBoxImage.Error);
         };
         ReloadSpeakers();
         _item.PropertyChanged += MeetingProcessingChanged;
@@ -335,6 +340,12 @@ public partial class RecordingDetailWindow : Window
 
     private async void PrepareAudio_Click(object sender, RoutedEventArgs e)
     {
+        try { await PrepareAudioAsync(); }
+        catch (Exception ex) { MessageBox.Show(this, ex.Message, "Prepare audio failed", MessageBoxButton.OK, MessageBoxImage.Error); }
+    }
+
+    internal async Task PrepareAudioAsync()
+    {
         var state = GetMeetingState();
         if (_isPreparing || (state.AudioPrepared && state.MixedPlaybackReady)) return;
         _isPreparing = true;
@@ -345,7 +356,7 @@ public partial class RecordingDetailWindow : Window
         MixedAudioStatusText.Text = "Preparing audio…";
         try
         {
-            var processor = new RecordingPostProcessor(_library, App.Settings);
+            var processor = new RecordingPostProcessor(_library, _settings);
             await Task.Run(() => processor.Process(_item));
             _isMixedPlaybackLoaded = false;
             _isMixedPlaybackPlaying = false;
@@ -355,7 +366,7 @@ public partial class RecordingDetailWindow : Window
         catch (Exception ex)
         {
             AppLogger.Error(ex, $"Prepare audio failed: {_item.Folder}");
-            MessageBox.Show(this, ex.Message, "Prepare audio failed", MessageBoxButton.OK, MessageBoxImage.Error);
+            throw;
         }
         finally
         {
@@ -369,7 +380,7 @@ public partial class RecordingDetailWindow : Window
 
     protected override void OnClosing(CancelEventArgs e)
     {
-        if (_isPreparing) e.Cancel = true;
+        if (_isPreparing || _isGenerating) e.Cancel = true;
         base.OnClosing(e);
     }
 
@@ -466,7 +477,13 @@ public partial class RecordingDetailWindow : Window
 
     private async void Generate_Click(object sender, RoutedEventArgs e)
     {
-        if (IsProcessing) return;
+        try { await GenerateTranscriptAsync(); }
+        catch (Exception ex) { MessageBox.Show(this, ex.Message, "Generation failed", MessageBoxButton.OK, MessageBoxImage.Error); }
+    }
+
+    internal async Task GenerateTranscriptAsync()
+    {
+        if (IsBusy) throw new InvalidOperationException("The meeting is busy.");
         var existingPath = Path.Combine(_item.Folder, FinalTranscriptFileName);
         if (File.Exists(existingPath) && IsCompletedTranscript(File.ReadAllText(existingPath)))
         {
@@ -476,20 +493,15 @@ public partial class RecordingDetailWindow : Window
 
         if (!GetMeetingState().CanGenerate)
         {
-            MessageBox.Show(
-                this,
-                "Name every detected remote speaker before generating the final transcript or summary.",
-                "Speaker names required",
-                MessageBoxButton.OK,
-                MessageBoxImage.Warning);
-            return;
+            throw new InvalidOperationException("Name every detected remote speaker before generating the final transcript.");
         }
 
+        _isGenerating = true;
         IsEnabled = false;
         FinalStatusText.Text = "Generating transcript…";
         try
         {
-            if (App.Settings.LlmProviderId != "openai-compatible")
+            if (_settings.LlmProviderId != "openai-compatible")
                 throw new InvalidOperationException("The selected LLM provider is not supported.");
             SaveSpeakerMap();
             var names = Speakers.ToDictionary(x => x.SourceLabel, x => x.DisplayName.Trim());
@@ -509,7 +521,7 @@ public partial class RecordingDetailWindow : Window
                 .Concat(microphone.Select(x => x with { Speaker = LocalSpeakerName, SourceTrack = "microphone" }))
                 .OrderBy(x => x.Start).ToList();
             if (segments.Count == 0) throw new InvalidOperationException("There is no recognized speech to generate from.");
-            IAiProvider provider = new AzureOpenAiProvider(App.Settings.OpenAiCompatible);
+            IAiProvider provider = new AzureOpenAiProvider(_settings.OpenAiCompatible);
             AppLogger.Info($"Final transcript generation started. Segments={segments.Count}; Echo deduplication enabled.");
             var result = await provider.CreateFinalTranscriptAsync(new FinalTranscriptRequest(_item.Title, segments));
             var finalPath = Path.Combine(_item.Folder, FinalTranscriptFileName);
@@ -522,10 +534,11 @@ public partial class RecordingDetailWindow : Window
         catch (Exception ex)
         {
             AppLogger.Error(ex, "Final transcript generation failed.");
-            MessageBox.Show(this, ex.Message, "Generation failed", MessageBoxButton.OK, MessageBoxImage.Error);
+            throw;
         }
         finally
         {
+            _isGenerating = false;
             IsEnabled = true;
             RefreshView();
         }
@@ -755,8 +768,8 @@ public partial class RecordingDetailWindow : Window
         return duration + textScore;
     }
 
-    private static string LocalSpeakerName => string.IsNullOrWhiteSpace(App.Settings.UserName)
-        ? "You" : App.Settings.UserName.Trim();
+    private string LocalSpeakerName => string.IsNullOrWhiteSpace(_settings.UserName)
+        ? "You" : _settings.UserName.Trim();
 
     private void SaveSpeakerMap()
     {
@@ -777,7 +790,7 @@ public partial class RecordingDetailWindow : Window
             }).ToList()
         };
 
-        File.WriteAllText(Path.Combine(_item.Folder, SpeakerMapFileName), JsonSerializer.Serialize(map, JsonOptions));
+        Recap.Storage.AtomicFile.WriteText(Path.Combine(_item.Folder, SpeakerMapFileName), JsonSerializer.Serialize(map, JsonOptions));
         _savedSpeakerNames = Speakers.ToDictionary(x => x.SourceLabel, x => x.DisplayName.Trim());
     }
 
@@ -816,6 +829,8 @@ public sealed class SpeakerNameItem : INotifyPropertyChanged
     private string _displayName = string.Empty;
     private List<TranscriptSegment> _samples = [];
     private int _sampleIndex;
+    internal int SampleIndex => _sampleIndex;
+    internal IReadOnlyList<TranscriptSegment> Samples => _samples;
     public bool HasPreviousSample => _sampleIndex > 0;
     public bool HasNextSample => _sampleIndex + 1 < _samples.Count;
     public string SampleCountDisplay => _samples.Count == 0 ? string.Empty : $"{_sampleIndex + 1} of {_samples.Count}";

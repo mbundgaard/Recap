@@ -53,7 +53,7 @@ public sealed class RecordingLibrary
     public void SaveMetadata(string folder, RecordingMetadata metadata)
     {
         var path = Path.Combine(folder, "metadata.json");
-        File.WriteAllText(path, JsonSerializer.Serialize(metadata, JsonOptions));
+        Recap.Storage.AtomicFile.WriteText(path, JsonSerializer.Serialize(metadata, JsonOptions));
     }
 
     public void Rename(RecordingListItem item, string title)

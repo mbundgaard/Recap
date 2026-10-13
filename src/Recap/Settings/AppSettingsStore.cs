@@ -56,7 +56,7 @@ public sealed class AppSettingsStore
     public void Save(AppSettings settings)
     {
         Directory.CreateDirectory(AppFolder);
-        File.WriteAllText(SettingsPath, JsonSerializer.Serialize(settings, JsonOptions));
+        Recap.Storage.AtomicFile.WriteText(SettingsPath, JsonSerializer.Serialize(settings, JsonOptions));
     }
 
     public void OpenSettingsFile()

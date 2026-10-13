@@ -9,7 +9,7 @@ self-contained executable.
 | NAudio | 2.2.1 | MIT; retain the package's copyright and licence notices |
 | Markdig | 1.4.0 | BSD-2-Clause; retain the package's copyright and licence notices |
 | Microsoft Cognitive Services Speech SDK | 1.52.0 | Microsoft Software License Terms, included as `LICENSE.txt` in the NuGet package; not covered by Recap's MIT licence |
-| .NET / WPF runtime | .NET 8 runtime resolved when publishing | See the runtime's licence and third-party notices |
+| .NET / WPF / ASP.NET Core runtime | .NET 8 runtime resolved when publishing | See the runtime's licence and third-party notices |
 | Frontend design skill | Repository copy | Apache-2.0; see `.agents/skills/frontend-design/LICENSE.txt` |
 
 Source packages and authoritative licence information:
@@ -20,6 +20,8 @@ Source packages and authoritative licence information:
 - <https://github.com/dotnet/runtime/blob/main/LICENSE.TXT>
 - <https://github.com/dotnet/runtime/blob/main/THIRD-PARTY-NOTICES.TXT>
 - <https://github.com/dotnet/wpf/blob/main/LICENSE.TXT>
+- <https://github.com/dotnet/aspnetcore/blob/main/LICENSE.txt>
+- <https://github.com/dotnet/aspnetcore/blob/main/THIRD-PARTY-NOTICES.txt>
 
 This list identifies the direct dependencies; it is not a completed redistribution
 licence audit. Transitive dependencies and native components have their own terms.

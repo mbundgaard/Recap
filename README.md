@@ -1,112 +1,119 @@
 # Recap
 
-**[⬇ Download the latest release for Windows (.exe)](https://github.com/mbundgaard/Recap/releases/latest/download/Recap-win-x64.exe)** · [Release notes](https://github.com/mbundgaard/Recap/releases/latest)
+**[Download the latest release for Windows (.exe)](https://github.com/mbundgaard/Recap/releases/latest/download/Recap-win-x64.exe)** - [Release notes](https://github.com/mbundgaard/Recap/releases/latest)
 
-## Be present in the meeting. Come back to the details.
+Recap records meetings on your Windows PC and turns them into transcripts with speaker
+names and timestamps. It captures system audio and your microphone, so there's no bot
+to invite and no meeting service or calendar to connect.
 
-Recap turns conversations into readable transcripts—without adding a bot to your
-meeting or connecting your calendar. Record on your Windows PC, put names to the
-voices, and revisit what was actually said.
+Download the executable and run it. No installer or separate .NET installation is needed.
 
-One executable. No installer or separate .NET installation needed.
+## Recording and transcription
 
-## From conversation to transcript
+Choose your audio devices and spoken language, then start recording. Recap saves your
+microphone and system audio as separate tracks on your computer. English and Danish
+are available in the language selector. **Pause** stops saving audio from both tracks
+and freezes the timer. **Resume** continues the same meeting, without the paused interval.
 
-### Record what you hear—and what you say
+After recording, process a meeting yourself or enable automatic processing. Recap
+prepares the audio and recognizes both tracks in parallel. Meetings are processed
+oldest first, with progress shown in the list. If something fails, you can retry without
+reprocessing a track that has already finished.
 
-Capture system audio and your microphone as separate tracks. Start and stop on your
-terms, watch the audio levels, and choose English or Danish before recording.
-Recap records your computer's audio rather than integrating with a particular meeting
-service: no meeting bots, browser extensions, or calendar permissions.
+You can pause automatic processing when your connection is unreliable and continue
+later. Recording still works while processing is paused.
 
-### Let the preparation happen in the background
+Once speech recognition is done, listen to short samples to identify the speakers.
+Then create the final transcript. The LLM is instructed to keep the original language,
+include timestamps, and remove clear microphone echoes of remote speech.
 
-Process meetings individually or enable automatic meeting processing. Recap prepares
-the audio and recognizes both tracks in parallel, working through your oldest meetings
-first. Progress bars show what's happening, and completed tracks are kept if you need
-to retry.
+Copy the result to your clipboard or save it as Markdown. You can also play back the
+meeting to check a passage, or change the language and reprocess the saved audio.
+Reprocessing replaces the existing speech results and generated transcript, not the audio.
 
-On an unreliable connection? Pause automatic processing and return to it later.
-You can keep recording while processing is paused.
+Recognition and AI output can be wrong. Check important details against the recording.
 
-### Put names to the voices
+## Other useful features
 
-Listen to short speaker samples and assign names before creating the final transcript.
-Meeting playback, a seek bar, and skip controls make it easy to revisit a moment.
-Need a different recognition language? Change it and reprocess without recording again.
+- Rename meetings and keep their recordings and transcripts together.
+- Hide the meeting list for a compact recording window.
+- Choose where recordings and logs are stored.
+- Keep the original audio after preparation if you want it.
+- Enable update checks and install updates when you're ready. Downloads are verified
+  against a signed manifest, and the previous executable is restored if an update
+  fails to start. Updates don't interrupt recording or processing.
 
-### Create something you can use
+## Let an agent control Recap
 
-Generate an AI-assisted transcript with speaker names and timestamps. Recap asks the
-AI to preserve the spoken language and remove clear microphone echoes of remote audio.
-Review the result, copy it to your clipboard, or save it as Markdown for your notes,
-project documentation, or follow-up.
+Click **AI** beside Settings to copy a short prompt with the local API URL, an access
+token, and instructions for your agent. The agent can fetch `/skill` for the command
+reference, then record, pause, stop, manage meetings, name speakers, create transcripts,
+control playback, change settings, and manage updates.
 
-Speech recognition and AI can make mistakes—review important details before relying
-on or sharing a transcript.
+The server listens only on `127.0.0.1`. Every request needs the token, including the
+skill endpoint. The token grants control of the app, so only share the prompt with an
+agent you trust. It isn't saved to disk or logs and changes when Recap restarts.
+Provider credentials are write-only through the API. Deletion, reprocessing, updates,
+and quitting require explicit confirmation fields.
 
-## A small app that stays out of your way
+See the [agent API reference](src/Recap/Agent/skill.md) for commands and safety guidance.
 
-- **Your meeting library:** rename recordings and return to the audio and transcripts
-  when you need them.
-- **Compact recorder:** hide the meeting list when you only want the recording controls.
-  Background work continues.
-- **Your devices:** choose the microphone and system-audio device that suit your setup.
-- **Your storage:** choose where recordings and logs live, and whether to keep the
-  original audio after preparation.
-- **Updates on your terms:** opt into update checks, then choose **Update and restart**
-  when you're ready. Signed update manifests verify downloads, and startup rollback
-  helps recover from a failed update. Updates don't interrupt recording or processing.
+## Speech and LLM providers
 
-## Local recordings. Clear choices about the cloud.
+**Azure Speech is the current speech-recognition provider.** The integration sits behind
+`ITranscriptionProvider`, so other providers can be added without changing the recording
+workflow.
 
-Recordings and app data are stored on your computer. Automatic meeting processing is
-off by default—you decide when to process a meeting or enable background processing.
+The LLM integration is separate, behind `IAiProvider`. Other LLM APIs can be supported
+by adding an adapter. The included adapter currently uses **Azure OpenAI's Responses
+API**; generic chat-completion endpoints are not supported by that adapter yet.
 
-Transcription is **not entirely offline**:
+You supply your own provider credentials. Service charges may apply.
 
-- Speech recognition sends audio to **Azure Speech**.
-- Final transcript generation sends recognized text to **Azure OpenAI**.
-- You supply your own provider credentials; service charges may apply.
+## Your data
 
-Recap doesn't add cloud storage for your recording library. Obtain any required consent
-before recording or sending a conversation to a provider, and don't share settings files
-containing API keys.
+Recordings and app data are stored locally. Automatic processing is off by default.
+When you process a meeting, audio is sent to the speech provider. Creating the final
+transcript sends the recognized text to the LLM provider. Transcription is therefore
+not entirely offline.
 
-Read more about [security and privacy](SECURITY.md).
+Recap doesn't add cloud storage for your recording library. Get any required consent
+before recording or sending a conversation to a provider. Settings files contain API
+keys, so don't include them in bug reports or screenshots.
+
+See [security and privacy](SECURITY.md) for more detail.
 
 ## Get started
 
-1. **[Download the Windows executable](https://github.com/mbundgaard/Recap/releases/latest/download/Recap-win-x64.exe)** and run it.
-2. Open **Settings** to choose your devices, storage, name, and speech/AI credentials.
-3. Choose the spoken language and click **Start recording**.
-4. Stop when you're done, then click **Process**—or let automatic processing handle it.
+1. [Download the executable](https://github.com/mbundgaard/Recap/releases/latest/download/Recap-win-x64.exe) and run it.
+2. Open **Settings** to enter your name, choose devices and storage, and configure your providers.
+3. Choose the language and click **Start recording**.
+4. Stop when you're done, then click **Process** or let automatic processing handle it.
 5. Name any detected speakers, create the transcript, and copy or export it.
 
-The Windows executable is not Authenticode-signed, so Windows may show an
-unknown-publisher warning. Download from this repository's releases, not an unofficial mirror.
+Update checks are optional and can be enabled under **Settings - General - Updates**.
+The executable is not Authenticode-signed, so Windows may show an unknown-publisher
+warning. Download it from this repository's releases rather than an unofficial mirror.
 
-## For developers
+## Build and test
 
-Recap is built with WPF and .NET. Audio capture, speech recognition, and AI generation
-are kept separate, with provider interfaces for replaceable integrations.
-
-Build a self-contained executable on Windows with the .NET SDK:
+Recap is built with WPF and .NET. On Windows with the .NET SDK installed, run:
 
 ```powershell
 .\build.ps1
 ```
 
-Output: `artifacts/win-x64/Recap.exe`.
+The single executable is written to `artifacts/win-x64/Recap.exe`.
 
-Run the offline regression checks:
+Run the offline regression checks with:
 
 ```powershell
 dotnet run --project tests/Recap.ProcessingTests --configuration Release
 ```
 
-These checks use temporary data and a fake speech provider; no Azure calls are made.
-For updater maintenance, see [update signing and recovery](docs/updates.md).
+The checks use temporary data, a fake speech provider, and loopback HTTP requests.
+They don't capture microphone audio or make Azure calls.
+See [update signing and recovery](docs/updates.md) for updater maintenance.
 
 ## Licence
 

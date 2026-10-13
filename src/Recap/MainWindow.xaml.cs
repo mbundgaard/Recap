@@ -20,6 +20,8 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromMilliseconds(250) };
     private readonly CancellationTokenSource _processingCancellation = new();
     private Task _processingTask = Task.CompletedTask;
+    private Task _recordingStopTask = Task.CompletedTask;
+    private bool _waitingForRecordingStop;
     private CancellationTokenSource? _activeProcessingCancellation;
     private bool _waitingForProcessingShutdown;
     private bool _startupRendered;
@@ -95,7 +97,7 @@ public partial class MainWindow : Window
 
     private async void RecordButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_isUpdating) return;
+        if (_isUpdating || _agentClosing || _isClosingAfterStop || (_session is null && _recordingStarted is not null)) return;
         if (_session is null)
         {
             StartRecording();
@@ -106,8 +108,10 @@ public partial class MainWindow : Window
         }
     }
 
-    private void StartRecording()
+    private void StartRecording(bool reportErrors = true)
     {
+        if (_isUpdating || _session is not null || _recordingStarted is not null)
+            throw new InvalidOperationException("Recording cannot start while the app is busy.");
         try
         {
             if (RecordingLanguageBox.SelectedValue is not string language || (language != "en-US" && language != "da-DK"))
@@ -126,19 +130,40 @@ public partial class MainWindow : Window
             RecordButton.Background = System.Windows.Media.Brushes.IndianRed;
             HintText.Text = "Capturing meeting audio and microphone to a local folder.";
 
+            PauseRecordingButton.Visibility = Visibility.Visible;
+            PauseRecordingButton.Content = "Pause";
             _timer.Start();
         }
         catch (Exception ex)
         {
+            try
+            {
+                if (_session is not null)
+                {
+                    _session.Metadata.Status = "failed";
+                    _session.Metadata.EndedLocal = DateTime.Now;
+                    _session.Metadata.EndedUtc = DateTime.UtcNow;
+                    _library.SaveMetadata(_session.Folder, _session.Metadata);
+                }
+            }
+            catch { /* Preserve the original startup error. */ }
             _session?.Dispose();
             _session = null;
             RecordingLanguageBox.IsEnabled = true;
             AppLogger.Error(ex, "Could not start recording.");
+            if (!reportErrors) throw;
             MessageBox.Show(this, ex.Message, "Could not start recording", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
-    private async Task StopRecordingAsync()
+    private Task StopRecordingAsync(bool reportErrors = true)
+    {
+        if (!_recordingStopTask.IsCompleted) return _recordingStopTask;
+        _recordingStopTask = StopRecordingCoreAsync(reportErrors);
+        return _recordingStopTask;
+    }
+
+    private async Task StopRecordingCoreAsync(bool reportErrors)
     {
         var session = _session;
         if (session is null)
@@ -148,6 +173,7 @@ public partial class MainWindow : Window
 
         _session = null;
         _timer.Stop();
+        PauseRecordingButton.Visibility = Visibility.Collapsed;
         RecordButton.IsEnabled = false;
         RecordButton.Content = "Stopping...";
         HintText.Text = "Finishing local audio files...";
@@ -179,10 +205,14 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             AppLogger.Error(ex, "Could not stop recording.");
+            if (!reportErrors) throw;
             MessageBox.Show(this, ex.Message, "Could not stop recording", MessageBoxButton.OK, MessageBoxImage.Error);
         }
         finally
         {
+            session.Dispose();
+            _recordingStarted = null;
+            RecordButton.Content = "Start recording";
             RecordButton.IsEnabled = true;
             RecordingLanguageBox.IsEnabled = true;
         }
@@ -240,6 +270,7 @@ public partial class MainWindow : Window
     {
         Dispatcher.BeginInvoke(() =>
         {
+            if (_session is null || _session.IsPaused) return;
             if (remoteLevel >= 0) _lastRemoteLevel = remoteLevel;
             if (microphoneLevel >= 0) _lastMicrophoneLevel = microphoneLevel;
         });
@@ -249,7 +280,7 @@ public partial class MainWindow : Window
     {
         if (_recordingStarted is not null)
         {
-            TimerText.Text = (DateTime.Now - _recordingStarted.Value).ToString(@"hh\:mm\:ss");
+            TimerText.Text = (_session?.Elapsed ?? TimeSpan.Zero).ToString(@"hh\:mm\:ss");
         }
 
         RemoteMeter.Value = Math.Min(100, _lastRemoteLevel * 250);
@@ -264,7 +295,8 @@ public partial class MainWindow : Window
         {
             // Keep active jobs and their metadata instance stable across list refreshes.
             Recordings.Add(existing.TryGetValue(item.Folder, out var previous)
-                && (previous.IsProcessing || previous.IsManuallyQueued || previous.ProcessingFailed) ? previous : item);
+                && (previous.IsProcessing || previous.IsManuallyQueued || previous.ProcessingFailed
+                    || _meetingWindows.ContainsKey(previous.Folder)) ? previous : item);
         }
         UpdatePausedMeetings();
         StartPendingProcessing();
@@ -320,6 +352,7 @@ public partial class MainWindow : Window
         {
             _startupRendered = true;
             StartPendingProcessing();
+            if (Application.Current is App) _ = StartAgentServerAsync();
             if (_settings.CheckForUpdatesOnStartup) _ = CheckForUpdatesAsync(false);
         }));
     }
@@ -336,7 +369,7 @@ public partial class MainWindow : Window
         while (!_processingCancellation.IsCancellationRequested)
         {
             var item = Recordings
-                .Where(x => x.Metadata.Status == "completed" && !x.CanOpen && !x.ProcessingFailed
+                .Where(x => x.Metadata.Status == "completed" && !x.CanOpen && !x.ProcessingFailed && !MeetingWindowBusy(x) && !_agentMutationMeetings.Contains(x.Folder)
                     && (!_settings.SpeechRecognitionPaused || x.IsManuallyQueued))
                 .OrderBy(x => x.Metadata.StartedLocal)
                 .FirstOrDefault();
@@ -393,6 +426,8 @@ public partial class MainWindow : Window
     {
         if (_isUpdating || _isPausingProcessing || _processingCancellation.IsCancellationRequested)
             throw new InvalidOperationException("Wait for processing to pause before starting again.");
+        if (MeetingWindowBusy(item) || item.IsProcessing || item.IsManuallyQueued)
+            throw new InvalidOperationException("Wait for the meeting's current operation to finish.");
         MeetingRecognitionService.ResetSpeechResults(_library, item, language);
         item.UpdateProcessing(null, false);
         item.SetManuallyQueued(true);
@@ -476,22 +511,27 @@ public partial class MainWindow : Window
             RefreshRecordings();
             return;
         }
-        var detail = new RecordingDetailWindow(_library, item, ReprocessMeeting) { Owner = this };
-        Hide();
-        try
-        {
-            detail.ShowDialog();
-        }
-        finally
-        {
-            Show();
-            Activate();
-            RefreshRecordings();
-        }
+        ShowMeeting(item);
     }
 
     protected override async void OnClosing(CancelEventArgs e)
     {
+        if (_meetingWindows.Values.Any(window => window.IsBusy && !window.IsSpeechProcessing))
+        {
+            e.Cancel = true;
+            MessageBox.Show(this, "Wait for audio preparation or transcript generation to finish before closing.", "Recap is busy");
+            return;
+        }
+        if (!_recordingStopTask.IsCompleted)
+        {
+            e.Cancel = true;
+            if (_waitingForRecordingStop) return;
+            _waitingForRecordingStop = true;
+            try { await _recordingStopTask; }
+            catch { /* The recording command already reports its failure. */ }
+            Close();
+            return;
+        }
         if (_isUpdating && !_handoffToUpdater)
         {
             e.Cancel = true;
@@ -514,6 +554,8 @@ public partial class MainWindow : Window
 
             e.Cancel = true;
             _isClosingAfterStop = true;
+            _waitingForRecordingStop = true;
+            _processingCancellation.Cancel();
             await StopRecordingAsync();
             Close();
             return;
@@ -531,6 +573,9 @@ public partial class MainWindow : Window
         }
         _processingCancellation.Cancel();
         _updateCancellation.Cancel();
+        _agentClosing = true;
+        foreach (var window in _meetingWindows.Values.ToArray()) window.Close();
+        _ = _agentServer?.DisposeAsync();
         base.OnClosing(e);
     }
 }
