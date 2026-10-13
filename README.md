@@ -1,133 +1,114 @@
 # Recap
 
-Local Windows meeting recorder built with WPF and .NET 8. Capture system audio and
-your microphone, recognize speech, name speakers, and create a final transcript.
-No meeting-provider integration or calendar access is required.
+**[⬇ Download the latest release for Windows (.exe)](https://github.com/mbundgaard/Recap/releases/latest/download/Recap-win-x64.exe)** · [Release notes](https://github.com/mbundgaard/Recap/releases/latest)
 
-**[Download Recap for Windows (.exe)](https://github.com/mbundgaard/Recap/releases/latest/download/Recap-win-x64.exe)**
+## Be present in the meeting. Come back to the details.
 
-Run the single executable; you do not need the source ZIP or a separate .NET installation.
-Enable automatic update checks in **Settings → General → Updates**.
+Recap turns conversations into readable transcripts—without adding a bot to your
+meeting or connecting your calendar. Record on your Windows PC, put names to the
+voices, and revisit what was actually said.
 
-## Getting started
+One executable. No installer or separate .NET installation needed.
 
-Source: <https://github.com/mbundgaard/Recap>
+## From conversation to transcript
 
-Configure your own Azure Speech and Azure OpenAI credentials in **Settings** before
-processing meetings. No shared credentials are included. Audio and app data stay on
-your computer until you explicitly process a meeting or enable automatic processing;
-recognition sends audio to Azure Speech and final transcript generation sends text
-to the configured AI service. Provider charges and recording-consent requirements apply.
+### Record what you hear—and what you say
 
-See [Security and privacy](SECURITY.md) before sharing settings, logs or recordings.
+Capture system audio and your microphone as separate tracks. Start and stop on your
+terms, watch the audio levels, and choose English or Danish before recording.
+Recap records your computer's audio rather than integrating with a particular meeting
+service: no meeting bots, browser extensions, or calendar permissions.
 
-## Build a single executable
+### Let the preparation happen in the background
 
-On Windows with the .NET 8 SDK installed, run from the repository root:
+Process meetings individually or enable automatic meeting processing. Recap prepares
+the audio and recognizes both tracks in parallel, working through your oldest meetings
+first. Progress bars show what's happening, and completed tracks are kept if you need
+to retry.
+
+On an unreliable connection? Pause automatic processing and return to it later.
+You can keep recording while processing is paused.
+
+### Put names to the voices
+
+Listen to short speaker samples and assign names before creating the final transcript.
+Meeting playback, a seek bar, and skip controls make it easy to revisit a moment.
+Need a different recognition language? Change it and reprocess without recording again.
+
+### Create something you can use
+
+Generate an AI-assisted transcript with speaker names and timestamps. Recap asks the
+AI to preserve the spoken language and remove clear microphone echoes of remote audio.
+Review the result, copy it to your clipboard, or save it as Markdown for your notes,
+project documentation, or follow-up.
+
+Speech recognition and AI can make mistakes—review important details before relying
+on or sharing a transcript.
+
+## A small app that stays out of your way
+
+- **Your meeting library:** rename recordings and return to the audio and transcripts
+  when you need them.
+- **Compact recorder:** hide the meeting list when you only want the recording controls.
+  Background work continues.
+- **Your devices:** choose the microphone and system-audio device that suit your setup.
+- **Your storage:** choose where recordings and logs live, and whether to keep the
+  original audio after preparation.
+- **Updates on your terms:** opt into update checks, then choose **Update and restart**
+  when you're ready. Signed update manifests verify downloads, and startup rollback
+  helps recover from a failed update. Updates don't interrupt recording or processing.
+
+## Local recordings. Clear choices about the cloud.
+
+Recordings and app data are stored on your computer. Automatic meeting processing is
+off by default—you decide when to process a meeting or enable background processing.
+
+Transcription is **not entirely offline**:
+
+- Speech recognition sends audio to **Azure Speech**.
+- Final transcript generation sends recognized text to **Azure OpenAI**.
+- You supply your own provider credentials; service charges may apply.
+
+Recap doesn't add cloud storage for your recording library. Obtain any required consent
+before recording or sending a conversation to a provider, and don't share settings files
+containing API keys.
+
+Read more about [security and privacy](SECURITY.md).
+
+## Get started
+
+1. **[Download the Windows executable](https://github.com/mbundgaard/Recap/releases/latest/download/Recap-win-x64.exe)** and run it.
+2. Open **Settings** to choose your devices, storage, name, and speech/AI credentials.
+3. Choose the spoken language and click **Start recording**.
+4. Stop when you're done, then click **Process**—or let automatic processing handle it.
+5. Name any detected speakers, create the transcript, and copy or export it.
+
+The Windows executable is not Authenticode-signed, so Windows may show an
+unknown-publisher warning. Download from this repository's releases, not an unofficial mirror.
+
+## For developers
+
+Recap is built with WPF and .NET. Audio capture, speech recognition, and AI generation
+are kept separate, with provider interfaces for replaceable integrations.
+
+Build a self-contained executable on Windows with the .NET SDK:
 
 ```powershell
 .\build.ps1
 ```
 
-The script produces only `artifacts/win-x64/Recap.exe` (Release,
-self-contained); the target machine does not need .NET installed. It cleans
-that output directory before publishing and fails if extra files remain.
-For Windows ARM64, use `.\build.ps1 -Runtime win-arm64` (not covered by CI).
-Specify a release version with `.\build.ps1 -Version 0.2.0`.
+Output: `artifacts/win-x64/Recap.exe`.
 
-Native dependencies are bundled inside the executable and extracted by .NET
-at runtime. Recordings and application settings remain separate local app data;
-“single executable” applies to distribution, not runtime data.
-
-## Settings
-
-At startup, Recap uses `settings.json` beside `Recap.exe` if it exists.
-Otherwise, it loads or creates `%LOCALAPPDATA%\Recap\settings.json`.
-Changes are saved to the selected file. Command-line settings paths are not supported.
-
-## Background processing
-
-Automatic processing is off for new installations. When enabled in Settings, on
-startup and after recording stops Recap prepares pending meetings and recognizes speech using the configured provider and each meeting's saved language
-(English for older meetings without a language). This sends audio to the configured
-speech service and may incur provider charges.
-
-Meetings are queued one at a time; remote and microphone recognition run in parallel.
-The meeting stays locked until prepared audio and both raw transcript files exist.
-The progress bar estimates recognition progress from audio timestamps, so silence may
-pause updates. Failed meetings show **Retry**; saving corrected settings also retries
-failures. Successfully saved tracks are reused. Closing Recap cancels recognition and
-waits for active work to stop; incomplete work resumes on the next launch.
-
-In **Settings → General**, uncheck **Automatic meeting processing** and save to stop
-active recognition and hold queued work until your connection is ready. Check it again to restart
-unfinished tracks; completed tracks are retained. The choice survives app restarts. Local recording remains available while paused. An audio preparation step
-already in progress finishes locally before pausing; queued preparation also waits.
-
-Each meeting offers **Process** (or **Retry** after a failure) until its audio and
-speech results are ready, then **Open**. Process queues only that meeting, even when
-automatic processing is off, without changing the saved automatic-processing choice.
-Active and queued meetings show disabled **Processing…** and **Queued** actions.
-
-In meeting details, choose a language and use **Reprocess speech** to queue new
-recognition through the same background processor. After confirmation, old speech
-results, speaker names and generated transcripts/summaries are removed; audio is kept.
-You can close the details window while processing continues. Saved speaker names
-lock **Confirm speakers** until a name is edited.
-
-Speaker naming and final transcript creation remain manual. Progress is based on
-files on disk, not persisted workflow flags. Delete downstream results too when
-redoing an earlier step, then reopen the app.
-
-Use **Hide meetings** beside the Settings icon for a compact recorder-only window.
-**Show meetings** restores the list and the previous window width. Recording and
-background processing continue while the list is hidden.
-
-Settings are grouped into **General** (name, automatic processing, storage and devices),
-**Speech to text**, and **Transcript and summary**. Processing changes apply on Save.
-
-## Offline processing checks
+Run the offline regression checks:
 
 ```powershell
 dotnet run --project tests/Recap.ProcessingTests --configuration Release
 ```
 
-These checks use a fake speech provider and temporary WAV files; no Azure calls occur.
-
-## Releases
-
-GitHub Actions builds and tests Windows x64 on pushes and pull requests, and scans
-history for secrets. Push a version tag such as `v0.1.0` to generate a **draft** GitHub
-Release containing the self-contained executable, SHA-256 checksum and a signed update
-manifest. The workflow requires the `RECAP_UPDATE_SIGNING_KEY` Actions secret and fails
-closed if it is missing or does not match the embedded public key.
-
-The update manifest is RSA-SHA256 signed; the executable is **not Authenticode-signed**,
-so Windows may still show unknown-publisher/SmartScreen warnings. Before publishing a
-binary, review third-party redistribution obligations and test on a clean Windows installation.
-A plain checksum alone is not an authenticity signature.
-
-## In-app updates
-
-In **Settings → General → Updates**, optionally enable startup update checks, or use
-**Save and check for updates**. Checks contact GitHub, without sending recordings or
-provider credentials. Only newer published stable releases from this repository are
-eligible; drafts and prereleases are ignored. Checking is off by default.
-
-Recap offers **Update and restart** and asks for confirmation before downloading.
-Recording and processing must be idle, and meeting windows closed. The updater verifies
-the signed manifest and package hash/size, replaces only the executable, and restores
-the previous executable if the replacement fails to start. The install folder must be
-writable; the updater never elevates privileges. Closing during download cancels it.
-
-In-app installation requires a published Windows x64 single-file build. Development
-and ARM64 builds are not supported. Install version 0.2.0 or newer manually once to
-obtain the updater. See [Update signing and recovery](docs/updates.md) for maintenance.
-
-For a manual upgrade, stop recording/processing and close Recap, then replace only the
-executable. Preserve `settings.json` and your recordings folder.
+These checks use temporary data and a fake speech provider; no Azure calls are made.
+For updater maintenance, see [update signing and recovery](docs/updates.md).
 
 ## Licence
 
 Recap source is available under the [MIT licence](LICENSE). Dependencies have separate
-terms; see [Third-party components](THIRD-PARTY-NOTICES.md).
+terms; see [third-party components](THIRD-PARTY-NOTICES.md).
