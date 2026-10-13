@@ -7,6 +7,7 @@ public sealed class AppSettings
     public string LogsFolder { get; set; } = string.Empty;
     public string SpeechProviderId { get; set; } = "azure-speech";
     public bool SpeechRecognitionPaused { get; set; } = true;
+    public bool CheckForUpdatesOnStartup { get; set; }
     public string LlmProviderId { get; set; } = "openai-compatible";
     public AudioDeviceSettings AudioDevices { get; set; } = new();
     public RecordingProcessingSettings RecordingProcessing { get; set; } = new();

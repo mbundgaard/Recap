@@ -92,6 +92,7 @@ try
     Check(File.Exists(Path.Combine(folder, "remote.wav")) && File.Exists(Path.Combine(folder, "mixed.wav")), "Reprocessing must keep audio");
     Check(!File.Exists(Path.Combine(folder, "final-transcript.md")) && !File.Exists(Path.Combine(folder, "speaker-map.json")), "Reprocessing must invalidate dependent results");
     RunWindowSmokeTest(settings);
+    await UpdaterTests.RunAsync(root);
     Console.WriteLine("PASS: parallel tracks, progress, partial failure/retry, disk readiness, active pause/resume, saved pause preference, meeting-row rendering.");
 }
 finally
@@ -179,6 +180,16 @@ static void RunWindowSmokeTest(AppSettings settings)
                 encoder.Save(output);
             }
             CheckStableFocusLayout(window);
+            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var busyForUpdate = typeof(Recap.MainWindow).GetProperty("WorkPreventsUpdate", flags)!;
+            var recordingStarted = typeof(Recap.MainWindow).GetField("_recordingStarted", flags)!;
+            recordingStarted.SetValue(window, DateTime.Now);
+            Check((bool)busyForUpdate.GetValue(window)!, "Recording or finishing a recording must block updating");
+            recordingStarted.SetValue(window, null);
+            var processingTask = typeof(Recap.MainWindow).GetField("_processingTask", flags)!;
+            processingTask.SetValue(window, new TaskCompletionSource().Task);
+            Check((bool)busyForUpdate.GetValue(window)!, "Active background processing must block updating");
+            processingTask.SetValue(window, Task.CompletedTask);
             CheckSettingsWindow(settings);
             CheckDetailWindow(window.Recordings.Single(), settings);
         }
@@ -208,6 +219,8 @@ static void CheckSettingsWindow(AppSettings settings)
         foreach (var name in new[] { "ProfileSection", "StorageSection", "DevicesSection" })
             Check(((System.Windows.FrameworkElement)dialog.FindName(name)).Visibility == System.Windows.Visibility.Visible,
                 "General must include profile, storage and devices");
+        var updates = (System.Windows.Controls.CheckBox)dialog.FindName("CheckForUpdatesBox");
+        Check(updates.IsChecked == false && !settings.CheckForUpdatesOnStartup, "Network update checks must be opt-in");
         var automatic = (System.Windows.Controls.CheckBox)dialog.FindName("AutomaticProcessingBox");
         Check(automatic.IsChecked == !settings.SpeechRecognitionPaused, "Automatic processing must reflect the saved preference");
         navigation.SelectedIndex = 1;

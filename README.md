@@ -28,7 +28,7 @@ The script produces only `artifacts/win-x64/Recap.exe` (Release,
 self-contained); the target machine does not need .NET installed. It cleans
 that output directory before publishing and fails if extra files remain.
 For Windows ARM64, use `.\build.ps1 -Runtime win-arm64` (not covered by CI).
-Specify a release version with `.\build.ps1 -Version 0.1.0`.
+Specify a release version with `.\build.ps1 -Version 0.2.0`.
 
 Native dependencies are bundled inside the executable and extracted by .NET
 at runtime. Recordings and application settings remain separate local app data;
@@ -93,12 +93,31 @@ These checks use a fake speech provider and temporary WAV files; no Azure calls 
 
 GitHub Actions builds and tests Windows x64 on pushes and pull requests, and scans
 history for secrets. Push a version tag such as `v0.1.0` to generate a **draft** GitHub
-Release containing the self-contained executable and its SHA-256 checksum.
+Release containing the self-contained executable, SHA-256 checksum and a signed update
+manifest. The workflow requires the `RECAP_UPDATE_SIGNING_KEY` Actions secret and fails
+closed if it is missing or does not match the embedded public key.
 
-Release drafts are currently **unsigned**. Before publishing a binary, review third-party
-redistribution obligations and test on a clean Windows installation. A checksum is not
-an authenticity signature. Code signing and an opt-in updater are future work; Recap
-does not currently download or install updates automatically.
+The update manifest is RSA-SHA256 signed; the executable is **not Authenticode-signed**,
+so Windows may still show unknown-publisher/SmartScreen warnings. Before publishing a
+binary, review third-party redistribution obligations and test on a clean Windows installation.
+A plain checksum alone is not an authenticity signature.
+
+## In-app updates
+
+In **Settings → General → Updates**, optionally enable startup update checks, or use
+**Save and check for updates**. Checks contact GitHub, without sending recordings or
+provider credentials. Only newer published stable releases from this repository are
+eligible; drafts and prereleases are ignored. Checking is off by default.
+
+Recap offers **Update and restart** and asks for confirmation before downloading.
+Recording and processing must be idle, and meeting windows closed. The updater verifies
+the signed manifest and package hash/size, replaces only the executable, and restores
+the previous executable if the replacement fails to start. The install folder must be
+writable; the updater never elevates privileges. Closing during download cancels it.
+
+In-app installation requires a published Windows x64 single-file build. Development
+and ARM64 builds are not supported. Install version 0.2.0 or newer manually once to
+obtain the updater. See [Update signing and recovery](docs/updates.md) for maintenance.
 
 For a manual upgrade, stop recording/processing and close Recap, then replace only the
 executable. Preserve `settings.json` and your recordings folder.

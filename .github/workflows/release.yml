@@ -35,6 +35,11 @@ jobs:
           Copy-Item LICENSE, THIRD-PARTY-NOTICES.md artifacts/release/
           $hash = (Get-FileHash artifacts/release/Recap-win-x64.exe -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  Recap-win-x64.exe" | Set-Content artifacts/release/SHA256SUMS.txt -Encoding ascii
+      - name: Sign update manifest
+        shell: pwsh
+        env:
+          RECAP_UPDATE_SIGNING_KEY: ${{ secrets.RECAP_UPDATE_SIGNING_KEY }}
+        run: ./tools/Sign-Update.ps1 -PackagePath artifacts/release/Recap-win-x64.exe -OutputDirectory artifacts/release -Version $env:RELEASE_VERSION
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: release-files
@@ -62,10 +67,12 @@ jobs:
           Maintainer checklist before publishing:
           - Test recording, playback and speech recognition on a clean Windows installation.
           - Review third-party SDK redistribution terms and notices.
-          - Configure Authenticode signing before offering trusted automatic updates.
+          - Consider Authenticode signing to reduce Windows unknown-publisher warnings.
 
-          This draft binary is unsigned. SHA256SUMS.txt is an integrity checksum, not an authenticity signature.
-          Automatic updates are not implemented yet. Settings and recordings must be preserved during manual upgrades.
+          The update manifest is RSA-SHA256 signed and verified by Recap's embedded public key. The executable is not Authenticode-signed.
+          SHA256SUMS.txt alone is only an integrity checksum; in-app updates require update-manifest.json and update-manifest.sig.
+          The opt-in updater checks published stable releases only, requires confirmation, and preserves settings and recordings.
+          Releases older than 0.2.0 require one manual upgrade to obtain the updater.
           '@ | Set-Content release-notes.md
           $assets = @(Get-ChildItem release -File | ForEach-Object { $_.FullName })
           gh release create $env:GITHUB_REF_NAME @assets --verify-tag --draft --title "Recap $env:GITHUB_REF_NAME" --notes-file release-notes.md

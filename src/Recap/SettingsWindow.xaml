@@ -147,6 +147,14 @@
                                   Foreground="#20252B" FontSize="13" Margin="0,0,0,0" />
                         <TextBlock Text="Prepare audio and recognize speech automatically. Turn off on an unreliable connection; individual meetings can still be processed manually. Final transcript creation stays manual."
                                    Style="{StaticResource HelpText}" Margin="0,8,0,22" />
+                        <TextBlock Text="Updates" Style="{StaticResource PanelTitle}" />
+                        <TextBlock x:Name="UpdateVersionText" Style="{StaticResource HelpText}" Margin="0,0,0,8" />
+                        <CheckBox x:Name="CheckForUpdatesBox" Content="Check for updates when Recap opens"
+                                  Foreground="#20252B" FontSize="13" />
+                        <TextBlock Text="Checks GitHub for published releases. Downloads and restarts require confirmation and never interrupt recording or processing."
+                                   Style="{StaticResource HelpText}" />
+                        <Button Content="Save and check for updates" Style="{StaticResource DeskButton}"
+                                HorizontalAlignment="Left" Margin="0,12,0,22" Click="SaveAndCheckUpdates_Click" />
                         <TextBlock Text="Your name" Style="{StaticResource FieldLabel}" />
                         <TextBox x:Name="UserNameBox" MaxLength="100" AutomationProperties.Name="Your name" />
                         <TextBlock Text="Used for your microphone speech in transcripts. Recreate an existing transcript to apply a changed name." Style="{StaticResource HelpText}" />

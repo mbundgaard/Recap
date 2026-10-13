@@ -7,9 +7,12 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <ApplicationIcon>Assets\icon.ico</ApplicationIcon>
+    <Version>0.2.0</Version>
   </PropertyGroup>
 
   <ItemGroup>
+    <AssemblyMetadata Include="RecapSingleFile" Value="$(PublishSingleFile)" />
+    <EmbeddedResource Include="Updates\update-public-key.pem" LogicalName="Recap.UpdatePublicKey" />
     <None Remove="Assets\icon.ico" />
     <None Remove="Assets\icon.png" />
     <None Remove="Assets\logo.png" />

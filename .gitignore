@@ -42,6 +42,7 @@ settings.json.*
 *.p12
 *.key
 *.pem
+!src/Recap/Updates/update-public-key.pem
 
 # Private meeting data, including copies outside Recordings/
 *.wav

@@ -4,6 +4,7 @@ using System.Windows;
 using NAudio.CoreAudioApi;
 using Recap.Recording;
 using Recap.Settings;
+using Recap.Updates;
 
 namespace Recap;
 
@@ -12,6 +13,8 @@ public partial class SettingsWindow : Window
     private readonly AppSettingsStore _store;
     private AppSettings _settings;
     public bool SpeechRecognitionPaused => _settings.SpeechRecognitionPaused;
+    public bool CheckForUpdatesOnStartup => _settings.CheckForUpdatesOnStartup;
+    public bool CheckForUpdatesRequested { get; private set; }
 
     public ObservableCollection<AudioDeviceOption> RemoteDevices { get; } = [];
     public ObservableCollection<AudioDeviceOption> MicrophoneDevices { get; } = [];
@@ -44,6 +47,8 @@ public partial class SettingsWindow : Window
         SettingsPathText.Text = _store.SettingsPath;
         UserNameBox.Text = _settings.UserName;
         AutomaticProcessingBox.IsChecked = !_settings.SpeechRecognitionPaused;
+        CheckForUpdatesBox.IsChecked = _settings.CheckForUpdatesOnStartup;
+        UpdateVersionText.Text = $"Installed version: {UpdateTrust.CurrentVersion}";
 
         RecordingsFolderBox.Text = _settings.RecordingsFolder;
         LogsFolderBox.Text = _settings.LogsFolder;
@@ -76,6 +81,7 @@ public partial class SettingsWindow : Window
         }
 
         _settings.SpeechRecognitionPaused = AutomaticProcessingBox.IsChecked != true;
+        _settings.CheckForUpdatesOnStartup = CheckForUpdatesBox.IsChecked == true;
         _settings.UserName = UserNameBox.Text.Trim();
         _settings.RecordingsFolder = RecordingsFolderBox.Text.Trim();
         _settings.LogsFolder = LogsFolderBox.Text.Trim();
@@ -97,6 +103,12 @@ public partial class SettingsWindow : Window
         _store.Save(_settings);
         DialogResult = true;
         Close();
+    }
+
+    private void SaveAndCheckUpdates_Click(object sender, RoutedEventArgs e)
+    {
+        CheckForUpdatesRequested = true;
+        Save_Click(sender, e);
     }
 
     private void Reload_Click(object sender, RoutedEventArgs e)

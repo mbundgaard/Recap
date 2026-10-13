@@ -95,6 +95,7 @@ public partial class MainWindow : Window
 
     private async void RecordButton_Click(object sender, RoutedEventArgs e)
     {
+        if (_isUpdating) return;
         if (_session is null)
         {
             StartRecording();
@@ -319,12 +320,13 @@ public partial class MainWindow : Window
         {
             _startupRendered = true;
             StartPendingProcessing();
+            if (_settings.CheckForUpdatesOnStartup) _ = CheckForUpdatesAsync(false);
         }));
     }
 
     private void StartPendingProcessing()
     {
-        if (!_startupRendered || !_processingTask.IsCompleted || _processingCancellation.IsCancellationRequested
+        if (_isUpdating || !_startupRendered || !_processingTask.IsCompleted || _processingCancellation.IsCancellationRequested
             || (_settings.SpeechRecognitionPaused && !Recordings.Any(x => x.IsManuallyQueued))) return;
         _processingTask = ProcessPendingMeetingsAsync();
     }
@@ -381,7 +383,7 @@ public partial class MainWindow : Window
             OpenRecordingDetail_Click(sender, e);
             return;
         }
-        if (_isPausingProcessing) return; // Cancellation is still settling.
+        if (_isUpdating || _isPausingProcessing) return; // Cancellation or an update is still settling.
         item.UpdateProcessing(null, false);
         item.SetManuallyQueued(true);
         StartPendingProcessing();
@@ -389,7 +391,7 @@ public partial class MainWindow : Window
 
     private void ReprocessMeeting(RecordingListItem item, string language)
     {
-        if (_isPausingProcessing || _processingCancellation.IsCancellationRequested)
+        if (_isUpdating || _isPausingProcessing || _processingCancellation.IsCancellationRequested)
             throw new InvalidOperationException("Wait for processing to pause before starting again.");
         MeetingRecognitionService.ResetSpeechResults(_library, item, language);
         item.UpdateProcessing(null, false);
@@ -404,7 +406,7 @@ public partial class MainWindow : Window
 
     private async void OpenSettings_Click(object sender, RoutedEventArgs e)
     {
-        if (_isPausingProcessing) return;
+        if (_isUpdating || _isPausingProcessing) return;
         var wasPaused = _settings.SpeechRecognitionPaused;
         var dialog = new SettingsWindow(_settingsStore, _settings) { Owner = this };
         bool? saved;
@@ -421,9 +423,15 @@ public partial class MainWindow : Window
         if (saved == true)
         {
             _settings.SpeechRecognitionPaused = dialog.SpeechRecognitionPaused;
+            _settings.CheckForUpdatesOnStartup = dialog.CheckForUpdatesOnStartup;
             RefreshAudioDevices();
             await ApplyAutomaticProcessingAsync(wasPaused);
             UpdatePausedMeetings();
+            if (dialog.CheckForUpdatesRequested)
+            {
+                await CheckForUpdatesAsync(true);
+                return;
+            }
             MessageBox.Show(
                 this,
                 "Settings saved. Device changes apply to the next recording. Restart Recap to apply startup-only changes such as the recordings folder.",
@@ -484,6 +492,17 @@ public partial class MainWindow : Window
 
     protected override async void OnClosing(CancelEventArgs e)
     {
+        if (_isUpdating && !_handoffToUpdater)
+        {
+            e.Cancel = true;
+            if (_cancelingUpdateShutdown) return;
+            _cancelingUpdateShutdown = true;
+            _updateCancellation.Cancel();
+            _processingCancellation.Cancel();
+            await _installTask;
+            Close();
+            return;
+        }
         if (_session is not null && !_isClosingAfterStop)
         {
             var result = MessageBox.Show(this, "A recording is still running. Stop it and exit?", "Recording active", MessageBoxButton.YesNo, MessageBoxImage.Warning);
@@ -511,6 +530,7 @@ public partial class MainWindow : Window
             return;
         }
         _processingCancellation.Cancel();
+        _updateCancellation.Cancel();
         base.OnClosing(e);
     }
 }

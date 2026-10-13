@@ -192,7 +192,7 @@
                     </Grid>
                 </StackPanel>
                 <Grid Grid.Row="2">
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                     <Button Content="&#xE713;" FontFamily="Segoe MDL2 Assets" FontSize="18" Width="40" Padding="0" Background="Transparent" BorderThickness="0" Foreground="#A9B0BA" Style="{StaticResource SmallButton}" Click="OpenSettings_Click" HorizontalAlignment="Left" ToolTip="Settings" AutomationProperties.Name="Settings" />
                     <Button x:Name="MeetingsToggleButton" Grid.Column="1" Content="&#xE76B;" FontFamily="Segoe MDL2 Assets"
                             FontSize="18" Width="40" Padding="0" Margin="4,0,0,0" HorizontalAlignment="Left"
@@ -200,6 +200,10 @@
                             Style="{StaticResource SmallButton}" Click="ToggleMeetings_Click"
                             ToolTip="Hide meetings"
                             AutomationProperties.Name="Hide meetings" />
+                    <Button x:Name="UpdateButton" Grid.Column="2" Content="Update available" Visibility="Collapsed"
+                            Style="{StaticResource SmallButton}" HorizontalAlignment="Right" Margin="8,0,0,0"
+                            Background="Transparent" Foreground="#FFFDF8" BorderThickness="0"
+                            Click="UpdateButton_Click" ToolTip="Install the verified update and restart Recap" />
                 </Grid>
             </Grid>
         </Border>

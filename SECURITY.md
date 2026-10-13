@@ -14,7 +14,15 @@ Logs can contain local paths, resource endpoints and service diagnostics. Review
 redact them before sharing. Recognized speech text is not deliberately written to
 ordinary progress logs.
 
-Self-updating is not implemented. Current release drafts are unsigned. Do not treat
-an unsigned download or a checksum from the same download source as cryptographic
-proof of authenticity. Trusted automatic updates require independently verifiable
-release signing, safe replacement/rollback, and preservation of settings and recordings.
+The opt-in updater accepts only newer stable releases with an RSA-SHA256 manifest
+signature that verifies against the public key embedded in the installed executable.
+It also verifies the package's signed size and SHA-256 hash before replacement.
+The private signing key is not in this repository. Releases lacking valid signatures
+are not installable through the updater.
+
+Manifest signing is distinct from Windows Authenticode: executables currently have
+no Authenticode certificate and may show unknown-publisher warnings. A plain checksum
+alone does not establish authenticity. Protect the GitHub account, signing secret and
+release workflow: access to run a modified signing workflow can compromise updates.
+Startup acknowledgement supports rollback but is not a complete application health test.
+See [Update signing and recovery](docs/updates.md).
