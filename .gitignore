@@ -22,6 +22,18 @@ obj/
 *.nupkg
 packages/
 
+# Hugging Face downloader cache metadata is not redistributed
+models/**/.cache/
+
+# Python bytecode (local worker/test runs)
+__pycache__/
+*.pyc
+
+# Local Intercom runtime observations (configuration is retained separately)
+.pi-intercom/logs/
+.pi-intercom/reports/
+.pi-intercom/monitor-*.json
+
 # Logs
 *.log
 

@@ -1,0 +1,2 @@
+# Keep mirrored model assets byte-identical to their upstream hashes on Windows.
+models/community-1/** -text -filter
