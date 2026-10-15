@@ -35,6 +35,8 @@ jobs:
           dotnet-version: 8.0.x
       - run: dotnet build src/Recap/Recap.csproj --configuration Release
       - run: dotnet run --project tests/Recap.ProcessingTests --configuration Release
+      - name: Offline Python worker checks
+        run: python tests/test_local_whisper_worker.py
       - name: Verify single-file publish
         shell: pwsh
         run: ./build.ps1

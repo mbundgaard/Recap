@@ -101,6 +101,7 @@ public sealed class AppSettingsStore
 
         settings.AudioDevices ??= defaults.AudioDevices;
         settings.RecordingProcessing ??= defaults.RecordingProcessing;
+        settings.LocalWhisper ??= defaults.LocalWhisper;
         settings.AzureSpeech ??= defaults.AzureSpeech;
         settings.OpenAiCompatible ??= defaults.OpenAiCompatible;
 

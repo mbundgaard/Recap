@@ -13,6 +13,10 @@
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <EmbeddedResource Include="Agent\skill.md" LogicalName="Recap.AgentSkill" />
+    <EmbeddedResource Include="LocalWhisper\worker.py" LogicalName="Recap.LocalWhisper.worker.py" />
+    <EmbeddedResource Include="LocalWhisper\community-1.json" LogicalName="Recap.LocalWhisper.community-1.json" />
+    <EmbeddedResource Include="LocalWhisper\requirements-cpu.txt" LogicalName="Recap.LocalWhisper.requirements-cpu.txt" />
+    <EmbeddedResource Include="LocalWhisper\requirements-cuda.txt" LogicalName="Recap.LocalWhisper.requirements-cuda.txt" />
     <AssemblyMetadata Include="RecapSingleFile" Value="$(PublishSingleFile)" />
     <EmbeddedResource Include="Updates\update-public-key.pem" LogicalName="Recap.UpdatePublicKey" />
     <None Remove="Assets\icon.ico" />

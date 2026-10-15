@@ -11,7 +11,8 @@ public sealed record TrackTranscriptionRequest(
     string AudioFilePath,
     string SourceTrack,
     string SpeakerLabel,
-    IProgress<TimeSpan>? Progress = null);
+    IProgress<TimeSpan>? Progress = null,
+    IProgress<string>? PhaseProgress = null);
 
 public sealed record TrackTranscriptResult(
     string SourceTrack,

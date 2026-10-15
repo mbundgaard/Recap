@@ -11,6 +11,7 @@ public sealed class AppSettings
     public string LlmProviderId { get; set; } = "openai-compatible";
     public AudioDeviceSettings AudioDevices { get; set; } = new();
     public RecordingProcessingSettings RecordingProcessing { get; set; } = new();
+    public Recap.LocalWhisper.LocalWhisperSettings LocalWhisper { get; set; } = new();
     public AzureSpeechSettings AzureSpeech { get; set; } = new();
     public OpenAiCompatibleSettings OpenAiCompatible { get; set; } = new();
 }

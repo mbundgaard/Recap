@@ -92,6 +92,7 @@ try
     Check(File.Exists(Path.Combine(folder, "remote.wav")) && File.Exists(Path.Combine(folder, "mixed.wav")), "Reprocessing must keep audio");
     Check(!File.Exists(Path.Combine(folder, "final-transcript.md")) && !File.Exists(Path.Combine(folder, "speaker-map.json")), "Reprocessing must invalidate dependent results");
     RunWindowSmokeTest(settings);
+    await LocalWhisperTests.RunAsync(root);
     await UpdaterTests.RunAsync(root);
     await AgentTests.RunAsync(root);
     Console.WriteLine("PASS: parallel tracks, progress, partial failure/retry, disk readiness, active pause/resume, saved pause preference, meeting-row rendering.");
@@ -229,6 +230,39 @@ static void CheckSettingsWindow(AppSettings settings)
         Check(((System.Windows.FrameworkElement)dialog.FindName("SpeechSection")).Visibility == System.Windows.Visibility.Visible
             && ((System.Windows.FrameworkElement)dialog.FindName("StorageSection")).Visibility == System.Windows.Visibility.Collapsed,
             "Speech page must hide all General sections");
+        Check(!Recap.LocalWhisper.LocalWhisperRuntime.SetupRunning, "Opening settings must not start local setup");
+        foreach (var removedControl in new[] { "DownloadLocalButton", "VerifyLocalButton", "CancelLocalButton", "LocalTokenBox", "LocalDiarizationBox" })
+            Check(dialog.FindName(removedControl) is null, "Settings must not expose removed setup/token/diarization control: " + removedControl);
+        var provider = (System.Windows.Controls.ComboBox)dialog.FindName("SpeechProviderIdBox");
+        var localPanel = (System.Windows.FrameworkElement)dialog.FindName("LocalWhisperPanel");
+        var azurePanel = (System.Windows.FrameworkElement)dialog.FindName("AzureSpeechPanel");
+        provider.SelectedValue = "azure-speech";
+        Check(azurePanel.Visibility == System.Windows.Visibility.Visible && localPanel.Visibility == System.Windows.Visibility.Collapsed,
+            "Azure selection must show only Azure settings");
+        provider.SelectedValue = "local-whisper";
+        dialog.UpdateLayout();
+        Check(localPanel.Visibility == System.Windows.Visibility.Visible && azurePanel.Visibility == System.Windows.Visibility.Collapsed,
+            "Local Whisper selection must show only local settings");
+        var english = (System.Windows.Controls.ComboBox)dialog.FindName("EnglishModelBox");
+        var danish = (System.Windows.Controls.ComboBox)dialog.FindName("DanishModelBox");
+        var expectedModels = Recap.LocalWhisper.LocalWhisperSettings.Models.Select(x => x.Id).ToArray();
+        foreach (var box in new[] { english, danish })
+            Check(box.Items.Cast<Recap.LocalWhisper.WhisperModelOption>().Select(x => x.Id).SequenceEqual(expectedModels),
+                "Each language dropdown must list every supported model");
+        Check((string)english.SelectedValue == "base" && (string)danish.SelectedValue == "medium",
+            "Settings must display English base and Danish medium defaults");
+        english.SelectedValue = "tiny";
+        danish.SelectedValue = "large-v3";
+        var readLocal = typeof(Recap.SettingsWindow).GetMethod("ReadLocalFields",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        var selected = (Recap.LocalWhisper.LocalWhisperSettings)readLocal.Invoke(dialog, null)!;
+        Check(selected.Diarization, "Reading settings must retain always-on speaker diarization");
+        Check(selected.EnglishModel == "tiny" && selected.DanishModel == "large-v3"
+            && selected.ForLanguage("en-US").Model == "tiny" && selected.ForLanguage("da-DK").Model == "large-v3",
+            "Local settings fields must round trip independent model selections");
+        Check(settings.LocalWhisper.EnglishModel == "base" && settings.LocalWhisper.DanishModel == "medium"
+            && settings.SpeechProviderId == "azure-speech", "Unsaved UI changes must not mutate supplied settings");
+        Check(!Recap.LocalWhisper.LocalWhisperRuntime.SetupRunning, "Selecting provider and models must not start setup");
         navigation.SelectedIndex = 2;
         Check(((System.Windows.FrameworkElement)dialog.FindName("LlmSection")).Visibility == System.Windows.Visibility.Visible,
             "Transcript and summary must remain a separate page");

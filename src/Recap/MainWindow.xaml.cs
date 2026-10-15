@@ -417,6 +417,13 @@ public partial class MainWindow : Window
             return;
         }
         if (_isUpdating || _isPausingProcessing) return; // Cancellation or an update is still settling.
+        if (MeetingRecognitionService.RequiresProviderReset(item, _settings))
+        {
+            if (MessageBox.Show(this, "This meeting has results from another provider or model. Replace its speech results, speaker names and generated transcript using the current Settings? Audio is kept.",
+                "Switch speech provider", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes) return;
+            ReprocessMeeting(item, item.Metadata.TranscriptionLanguage ?? "en-US");
+            return;
+        }
         item.UpdateProcessing(null, false);
         item.SetManuallyQueued(true);
         StartPendingProcessing();
@@ -516,6 +523,12 @@ public partial class MainWindow : Window
 
     protected override async void OnClosing(CancelEventArgs e)
     {
+        if (Recap.LocalWhisper.LocalWhisperRuntime.SetupRunning)
+        {
+            e.Cancel = true;
+            MessageBox.Show(this, "Cancel local model setup in Settings (or through the API), or wait for it to finish before closing.", "Local Whisper setup is running");
+            return;
+        }
         if (_meetingWindows.Values.Any(window => window.IsBusy && !window.IsSpeechProcessing))
         {
             e.Cancel = true;

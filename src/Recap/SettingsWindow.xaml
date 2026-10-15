@@ -130,7 +130,7 @@
                 </StackPanel>
                 <StackPanel Grid.Row="2">
                     <TextBlock Text="Save applies all sections." Foreground="#A9B0BA" FontSize="12" Margin="0,0,0,12" />
-                    <Button Content="Save settings" Background="#1E8E5A" BorderBrush="#1E8E5A" Style="{StaticResource DarkButton}" Click="Save_Click" IsDefault="True" Margin="0,0,0,8" />
+                    <Button x:Name="SaveSettingsButton" Content="Save settings" Background="#1E8E5A" BorderBrush="#1E8E5A" Style="{StaticResource DarkButton}" Click="Save_Click" IsDefault="True" Margin="0,0,0,8" />
                     <Button Content="Cancel" Style="{StaticResource DeskButton}" IsCancel="True" />
                 </StackPanel>
             </Grid>
@@ -199,29 +199,64 @@
                 <Border x:Name="SpeechSection" Visibility="Collapsed">
                     <StackPanel>
                         <TextBlock Text="Speech to text" Style="{StaticResource PanelTitle}" />
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="18" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel>
-                                <TextBlock Text="Provider id" Style="{StaticResource FieldLabel}" />
-                                <ComboBox x:Name="SpeechProviderIdBox" SelectedValuePath="Tag">
-                                    <ComboBoxItem Content="Azure Speech" Tag="azure-speech" />
+                        <TextBlock Text="Provider" Style="{StaticResource FieldLabel}" />
+                        <ComboBox x:Name="SpeechProviderIdBox" SelectedValuePath="Tag" SelectionChanged="SpeechProvider_SelectionChanged">
+                            <ComboBoxItem Content="Azure Speech" Tag="azure-speech" />
+                            <ComboBoxItem Content="Local Whisper" Tag="local-whisper" />
+                        </ComboBox>
+                        <StackPanel x:Name="AzureSpeechPanel" Margin="0,16,0,0">
+                            <TextBlock Text="Resource name" Style="{StaticResource FieldLabel}" />
+                            <TextBox x:Name="AzureSpeechResourceNameBox" />
+                            <TextBlock Text="Azure Speech endpoint" Style="{StaticResource FieldLabel}" Margin="0,16,0,6" />
+                            <TextBox x:Name="AzureSpeechEndpointBox" />
+                            <TextBlock Text="Subscription key" Style="{StaticResource FieldLabel}" Margin="0,16,0,6" />
+                            <PasswordBox x:Name="AzureSpeechKeyBox" />
+                            <TextBlock Text="Azure receives audio when you process a meeting. Service charges may apply." Style="{StaticResource HelpText}" />
+                        </StackPanel>
+                        <StackPanel x:Name="LocalWhisperPanel" Visibility="Collapsed" Margin="0,16,0,0">
+                            <TextBlock Text="Recognize speech, align words and label speakers on this PC. Missing runtime and models download automatically when processing starts; first use can download several GB. Files are verified offline before local recognition and Markdown creation, without an LLM." Style="{StaticResource HelpText}" Margin="0,0,0,16" />
+                            <StackPanel x:Name="LocalWhisperControls">
+                                <TextBlock Text="English model" Style="{StaticResource FieldLabel}" />
+                                <ComboBox x:Name="EnglishModelBox" DisplayMemberPath="Name" SelectedValuePath="Id" SelectionChanged="LocalModel_SelectionChanged" AutomationProperties.Name="English transcription model" />
+                                <TextBlock Text="Danish model" Style="{StaticResource FieldLabel}" Margin="0,16,0,6" />
+                                <ComboBox x:Name="DanishModelBox" DisplayMemberPath="Name" SelectedValuePath="Id" SelectionChanged="LocalModel_SelectionChanged" AutomationProperties.Name="Danish transcription model" />
+                                <TextBlock Text="The meeting language selects which model to use. Selecting a model does not download it." Style="{StaticResource HelpText}" />
+                                <TextBlock Text="Processing device" Style="{StaticResource FieldLabel}" Margin="0,16,0,6" />
+                                <ComboBox x:Name="LocalDeviceBox" SelectedValuePath="Tag">
+                                    <ComboBoxItem Content="Auto" Tag="auto" />
+                                    <ComboBoxItem Content="CPU" Tag="cpu" />
+                                    <ComboBoxItem Content="NVIDIA GPU (CUDA)" Tag="cuda" />
                                 </ComboBox>
+                                <Button x:Name="DetectLocalButton" Content="Detect best settings for my PC" Style="{StaticResource DeskButton}" HorizontalAlignment="Left" Margin="0,12,0,0" Click="DetectLocal_Click" />
+                                <TextBlock Text="Speaker labels are local to each meeting. Renaming is optional. Overlap, noise and microphone echo can still cause errors." Style="{StaticResource HelpText}" />
+                                <Expander Header="Advanced settings" Margin="0,16,0,0" Foreground="#20252B">
+                                    <StackPanel Margin="0,12,0,0">
+                                        <TextBlock Text="Precision" Style="{StaticResource FieldLabel}" />
+                                        <ComboBox x:Name="LocalComputeBox" SelectedValuePath="Tag">
+                                            <ComboBoxItem Content="Auto" Tag="auto" />
+                                            <ComboBoxItem Content="int8 (lower memory)" Tag="int8" />
+                                            <ComboBoxItem Content="float32" Tag="float32" />
+                                            <ComboBoxItem Content="float16 (GPU)" Tag="float16" />
+                                            <ComboBoxItem Content="int8 / float16 (GPU)" Tag="int8_float16" />
+                                        </ComboBox>
+                                        <TextBlock Text="Batch size (1-32)" Style="{StaticResource FieldLabel}" Margin="0,12,0,6" />
+                                        <TextBox x:Name="LocalBatchBox" />
+                                        <TextBlock Text="CPU threads (1-64)" Style="{StaticResource FieldLabel}" Margin="0,12,0,6" />
+                                        <TextBox x:Name="LocalThreadsBox" />
+                                        <TextBlock Text="GPU index (0 is the first GPU)" Style="{StaticResource FieldLabel}" Margin="0,12,0,6" />
+                                        <TextBox x:Name="LocalGpuBox" />
+                                        <TextBlock Text="Remote speaker count (0 = estimate)" Style="{StaticResource FieldLabel}" Margin="0,12,0,6" />
+                                        <TextBox x:Name="LocalSpeakersBox" />
+                                    </StackPanel>
+                                </Expander>
                             </StackPanel>
-                            <StackPanel Grid.Column="2">
-                                <TextBlock Text="Resource name" Style="{StaticResource FieldLabel}" />
-                                <TextBox x:Name="AzureSpeechResourceNameBox" />
-                            </StackPanel>
-                        </Grid>
-
-                        <TextBlock Text="Azure Speech endpoint" Style="{StaticResource FieldLabel}" Margin="0,16,0,6" />
-                        <TextBox x:Name="AzureSpeechEndpointBox" />
-
-                        <TextBlock Text="Subscription key" Style="{StaticResource FieldLabel}" Margin="0,16,0,6" />
-                        <PasswordBox x:Name="AzureSpeechKeyBox" />
+                            <TextBlock Text="Local files" Style="{StaticResource FieldLabel}" Margin="0,20,0,6" />
+                            <TextBox x:Name="LocalFolderBox" IsReadOnly="True" TextWrapping="Wrap" Height="Auto" MinHeight="36" />
+                            <TextBlock Text="Python, models and caches stay in Recap's AppData folder, separate from the EXE. Allow at least 10 GB free for CPU or 16 GB for GPU setup; larger model choices may need more. A model selected for both languages is downloaded only once. No system Python installation is changed." Style="{StaticResource HelpText}" />
+                            <TextBlock Text="Speaker models download from a GitHub mirror. No Hugging Face login or token is required. Recordings stay on this PC." Style="{StaticResource HelpText}" />
+                            <ProgressBar x:Name="LocalSetupProgress" Height="6" Minimum="0" Maximum="100" Margin="0,8,0,0" />
+                            <TextBlock x:Name="LocalStatusText" Style="{StaticResource HelpText}" />
+                        </StackPanel>
                     </StackPanel>
                 </Border>
 

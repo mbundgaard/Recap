@@ -11,6 +11,11 @@ public sealed record MeetingProcessingProgress(string Message, double Percent, b
 public sealed class MeetingRecognitionService(RecordingLibrary library, AppSettings settings,
     ITranscriptionProvider? transcriptionProvider = null)
 {
+    public static bool RequiresProviderReset(RecordingListItem item, AppSettings settings) =>
+        new[] { "remote", "microphone" }.Any(track => File.Exists(Path.Combine(item.Folder, $"raw-{track}-transcript.json")))
+        && ((item.Metadata.TranscriptionProviderId ?? "azure-speech") != settings.SpeechProviderId
+            || settings.SpeechProviderId == "local-whisper" && item.Metadata.TranscriptionModel != settings.LocalWhisper.ForLanguage(item.Metadata.TranscriptionLanguage ?? "en-US").Model);
+
     public static void ResetSpeechResults(RecordingLibrary library, RecordingListItem item, string language)
     {
         if (item.IsProcessing || item.IsManuallyQueued)
@@ -21,6 +26,14 @@ public sealed class MeetingRecognitionService(RecordingLibrary library, AppSetti
         foreach (var name in new[] { "raw-remote-transcript.json", "raw-microphone-transcript.json",
             "speaker-map.json", "merged-transcript.md", "final-transcript.md", "summary.md" })
             File.Delete(Path.Combine(item.Folder, name));
+        foreach (var track in new[] { "remote", "microphone" })
+            foreach (var stage in new[] { "asr", "aligned", "diarization", "result" })
+            {
+                File.Delete(Path.Combine(item.Folder, $"local-{track}-{stage}.json"));
+                File.Delete(Path.Combine(item.Folder, $"local-{track}-{stage}.json.tmp"));
+            }
+        item.Metadata.TranscriptionProviderId = null;
+        item.Metadata.TranscriptionModel = null;
         item.Metadata.TranscriptionLanguage = language;
         item.Metadata.Files.FinalTranscript = null;
         library.SaveMetadata(item.Folder, item.Metadata);
@@ -40,20 +53,35 @@ public sealed class MeetingRecognitionService(RecordingLibrary library, AppSetti
             (Source: "microphone", Audio: item.Metadata.Files.Microphone,
                 Speaker: string.IsNullOrWhiteSpace(settings.UserName) ? "You" : settings.UserName.Trim())
         };
-        if (tracks.All(t => File.Exists(Path.Combine(item.Folder, $"raw-{t.Source}-transcript.json")))) return;
-        if (!string.Equals(settings.SpeechProviderId, "azure-speech", StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException("Select a supported speech provider in Settings.");
-
-        var configured = settings.AzureSpeech;
-        ITranscriptionProvider provider = transcriptionProvider ?? new AzureSpeechTranscriptionProvider(new AzureSpeechSettings
+        if (tracks.All(t => File.Exists(Path.Combine(item.Folder, $"raw-{t.Source}-transcript.json"))))
         {
-            SubscriptionKey = configured.SubscriptionKey,
-            Endpoint = configured.Endpoint,
-            Region = configured.Region,
-            ResourceName = configured.ResourceName,
-            RecognitionLanguage = item.Metadata.TranscriptionLanguage ?? "en-US"
-        });
+            if (item.Metadata.TranscriptionProviderId == "local-whisper" && !item.HasFinalTranscript)
+                LocalTranscriptExporter.Export(library, item);
+            return;
+        }
+        var local = settings.SpeechProviderId == "local-whisper";
+        if (!local && settings.SpeechProviderId != "azure-speech")
+            throw new InvalidOperationException("Select a supported speech provider in Settings.");
+        if (RequiresProviderReset(item, settings))
+            throw new InvalidOperationException("Partial speech results use a different provider or model. Reprocess this meeting to switch without mixing results.");
+
+        var language = item.Metadata.TranscriptionLanguage ?? "en-US";
+        var configured = settings.AzureSpeech;
+        ITranscriptionProvider provider = transcriptionProvider ?? (local
+            ? new LocalWhisperTranscriptionProvider(settings.LocalWhisper, language)
+            : new AzureSpeechTranscriptionProvider(new AzureSpeechSettings
+            {
+                SubscriptionKey = configured.SubscriptionKey,
+                Endpoint = configured.Endpoint,
+                Region = configured.Region,
+                ResourceName = configured.ResourceName,
+                RecognitionLanguage = language
+            }));
+        item.Metadata.TranscriptionProviderId = settings.SpeechProviderId;
+        item.Metadata.TranscriptionModel = local ? settings.LocalWhisper.ForLanguage(language).Model : null;
+        library.SaveMetadata(item.Folder, item.Metadata);
         var fractions = new double[2];
+        var phases = new string?[2];
         var gate = new object();
         void Report(int index, double fraction)
         {
@@ -61,14 +89,15 @@ public sealed class MeetingRecognitionService(RecordingLibrary library, AppSetti
             {
                 fractions[index] = Math.Max(fractions[index], fraction);
                 var percent = fractions.Average() * 100;
-                progress.Report(new($"Recognizing speech · {percent:0}%", percent));
+                progress.Report(new($"{(local ? phases[index] ?? "Local speech processing" : "Recognizing speech")} · {percent:0}%", percent));
             }
         }
 
-        // Both tracks run concurrently. Each successful result is saved independently,
-        // so restarting or retrying never resubmits a completed track.
-        var tasks = tracks.Select((track, index) => Task.Run(async () =>
+        // Azure tracks run concurrently; local tracks run sequentially to bound memory.
+        // Each successful result is saved independently for partial retries.
+        Task ProcessTrack(int index) => Task.Run(async () =>
         {
+            var track = tracks[index];
             var target = Path.Combine(item.Folder, $"raw-{track.Source}-transcript.json");
             if (File.Exists(target))
             {
@@ -80,15 +109,28 @@ public sealed class MeetingRecognitionService(RecordingLibrary library, AppSetti
             using (var reader = new WaveFileReader(audioPath)) duration = reader.TotalTime.TotalSeconds;
             var trackProgress = new InlineProgress<TimeSpan>(position =>
                 Report(index, duration > 0 ? Math.Clamp(position.TotalSeconds / duration, 0, 0.99) : 0));
+            var stageProgress = new InlineProgress<string>(phase =>
+            {
+                lock (gate)
+                {
+                    phases[index] = phase;
+                    Report(index, fractions[index]);
+                }
+            });
             var result = await provider.TranscribeAsync(
-                new(audioPath, track.Source, track.Speaker, trackProgress), cancellationToken);
+                new(audioPath, track.Source, track.Speaker, trackProgress, stageProgress), cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
             var temporary = target + ".tmp";
             await File.WriteAllTextAsync(temporary, result.RawJson, cancellationToken);
             File.Move(temporary, target, overwrite: true);
             Report(index, 1);
-        }, cancellationToken)).ToArray();
-        await Task.WhenAll(tasks);
+        }, cancellationToken);
+        if (local)
+            for (var index = 0; index < tracks.Length; index++) await ProcessTrack(index);
+        else
+            await Task.WhenAll(Enumerable.Range(0, tracks.Length).Select(ProcessTrack));
+        cancellationToken.ThrowIfCancellationRequested();
+        if (local) LocalTranscriptExporter.Export(library, item);
     }
 
     private sealed class InlineProgress<T>(Action<T> report) : IProgress<T>

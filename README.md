@@ -16,16 +16,17 @@ are available in the language selector. **Pause** stops saving audio from both t
 and freezes the timer. **Resume** continues the same meeting, without the paused interval.
 
 After recording, process a meeting yourself or enable automatic processing. Recap
-prepares the audio and recognizes both tracks in parallel. Meetings are processed
+prepares the audio and recognizes both tracks (in parallel with Azure; serialized locally). Meetings are processed
 oldest first, with progress shown in the list. If something fails, you can retry without
 reprocessing a track that has already finished.
 
 You can pause automatic processing when your connection is unreliable and continue
 later. Recording still works while processing is paused.
 
-Once speech recognition is done, listen to short samples to identify the speakers.
-Then create the final transcript. The LLM is instructed to keep the original language,
-include timestamps, and remove clear microphone echoes of remote speech.
+With Azure, once speech recognition is done, listen to short samples to identify the
+speakers, then create the final transcript. The LLM is instructed to keep the original
+language, include timestamps, and remove clear microphone echoes of remote speech.
+Local Whisper creates timestamped Markdown locally without an LLM; naming speakers is optional.
 
 Copy the result to your clipboard or save it as Markdown. You can also play back the
 meeting to check a passage, or change the language and reprocess the saved audio.
@@ -60,22 +61,34 @@ See the [agent API reference](src/Recap/Agent/skill.md) for commands and safety 
 
 ## Speech and LLM providers
 
-**Azure Speech is the current speech-recognition provider.** The integration sits behind
-`ITranscriptionProvider`, so other providers can be added without changing the recording
-workflow.
+Local Whisper is available in the development build; it has not yet been published in a release.
+
+Choose **Azure Speech** or **Local Whisper** behind the replaceable `ITranscriptionProvider`
+interface. Local Whisper defaults to Base for English and Medium for Danish, with separate
+model choices for each language. Missing runtime and model files download automatically
+when processing starts. First use can download several GB; offline verification then
+runs automatically before local recognition. Community-1 speaker models come from a
+GitHub mirror, with no Hugging Face login or token required.
+
+Local workers and models load per operation; persistent model residency and preload
+are not implemented. Processing does not automatically pause recording. Optional manual
+setup remains available through the API for automation, without a model-download token.
+See [Local Whisper](docs/local-whisper.md) for settings, storage and resource requirements.
 
 The LLM integration is separate, behind `IAiProvider`. Other LLM APIs can be supported
 by adding an adapter. The included adapter currently uses **Azure OpenAI's Responses
 API**; generic chat-completion endpoints are not supported by that adapter yet.
 
-You supply your own provider credentials. Service charges may apply.
+Cloud providers require your own credentials and may charge for usage. Local Whisper
+requires no speech-provider credentials.
 
 ## Your data
 
 Recordings and app data are stored locally. Automatic processing is off by default.
-When you process a meeting, audio is sent to the speech provider. Creating the final
-transcript sends the recognized text to the LLM provider. Transcription is therefore
-not entirely offline.
+Azure Speech processing sends audio to Azure. Cloud transcript generation sends recognized
+text to the configured LLM provider. Local Whisper downloads its runtime and models as
+needed, then recognizes prepared audio and creates Markdown locally without uploading
+recordings or calling an LLM.
 
 Recap doesn't add cloud storage for your recording library. Get any required consent
 before recording or sending a conversation to a provider. Settings files contain API
@@ -89,7 +102,7 @@ See [security and privacy](SECURITY.md) for more detail.
 2. Open **Settings** to enter your name, choose devices and storage, and configure your providers.
 3. Choose the language and click **Start recording**.
 4. Stop when you're done, then click **Process** or let automatic processing handle it.
-5. Name any detected speakers, create the transcript, and copy or export it.
+5. With Azure, name detected speakers and create the transcript. Local Whisper creates it automatically; naming is optional. Copy or export the result.
 
 Update checks are optional and can be enabled under **Settings - General - Updates**.
 The executable is not Authenticode-signed, so Windows may show an unknown-publisher

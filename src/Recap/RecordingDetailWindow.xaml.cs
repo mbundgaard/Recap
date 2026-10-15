@@ -26,6 +26,7 @@ public partial class RecordingDetailWindow : Window
     private readonly Action<RecordingListItem, string> _requestReprocess;
     private Dictionary<string, string> _savedSpeakerNames = [];
     private bool _wasProcessing;
+    private bool IsLocalTranscript => _item.Metadata.TranscriptionProviderId == "local-whisper";
     private bool IsProcessing => _item.IsProcessing || _item.IsManuallyQueued;
     internal bool IsBusy => _isPreparing || _isGenerating || IsProcessing;
     private bool _isGenerating;
@@ -445,7 +446,7 @@ public partial class RecordingDetailWindow : Window
         if (IsProcessing) return;
         if (LanguageBox.SelectedValue is not string language || language is not ("da-DK" or "en-US")) return;
         var result = MessageBox.Show(this,
-            "Reprocess speech in the selected language?\n\nExisting speech results, speaker names, final transcript and summary will be replaced. Audio is kept. Speech service charges may apply.\n\nProcessing continues if you close this meeting.",
+            "Reprocess speech with the provider currently selected in Settings and the selected language?\n\nExisting speech results, speaker names, final transcript and summary will be replaced. Audio is kept. Azure processing sends audio to Azure and may incur charges; Local Whisper stays on this PC.\n\nProcessing continues if you close this meeting.",
             "Reprocess speech", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No);
         if (result != MessageBoxResult.Yes) return;
         try
@@ -487,6 +488,14 @@ public partial class RecordingDetailWindow : Window
         var existingPath = Path.Combine(_item.Folder, FinalTranscriptFileName);
         if (File.Exists(existingPath) && IsCompletedTranscript(File.ReadAllText(existingPath)))
         {
+            RefreshView();
+            return;
+        }
+
+        if (IsLocalTranscript)
+        {
+            if (!GetMeetingState().HasTranscripts) throw new InvalidOperationException("Recognize speech first.");
+            SaveSpeakerMap(); // Also rebuilds local Markdown without an LLM.
             RefreshView();
             return;
         }
@@ -682,7 +691,7 @@ public partial class RecordingDetailWindow : Window
 
         return Speakers.All(x =>
             !string.IsNullOrWhiteSpace(x.DisplayName)
-            && !string.Equals(x.DisplayName.Trim(), x.SourceLabel, StringComparison.OrdinalIgnoreCase));
+            && (IsLocalTranscript || !string.Equals(x.DisplayName.Trim(), x.SourceLabel, StringComparison.OrdinalIgnoreCase)));
     }
 
     private void LoadSpeakerMap()
@@ -750,12 +759,13 @@ public partial class RecordingDetailWindow : Window
             var item = new SpeakerNameItem
             {
                 SourceLabel = group.Key,
-                DisplayName = string.Empty,
+                DisplayName = IsLocalTranscript ? group.Key : string.Empty,
                 PreviewText = sample.Text,
                 SampleStart = sample.Start,
                 SampleEnd = sample.End
             };
             item.SetSamples(group);
+            if (IsLocalTranscript) _savedSpeakerNames[item.SourceLabel] = item.DisplayName;
             item.PropertyChanged += (_, args) => { if (args.PropertyName == nameof(SpeakerNameItem.DisplayName)) RefreshView(); };
             Speakers.Add(item);
         }
@@ -792,6 +802,8 @@ public partial class RecordingDetailWindow : Window
 
         Recap.Storage.AtomicFile.WriteText(Path.Combine(_item.Folder, SpeakerMapFileName), JsonSerializer.Serialize(map, JsonOptions));
         _savedSpeakerNames = Speakers.ToDictionary(x => x.SourceLabel, x => x.DisplayName.Trim());
+        if (IsLocalTranscript && GetMeetingState().HasTranscripts)
+            LocalTranscriptExporter.Export(_library, _item);
     }
 
     private static TimeSpan? ParseTimeSpan(string? value)

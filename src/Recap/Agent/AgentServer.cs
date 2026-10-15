@@ -186,6 +186,11 @@ public sealed class AgentServer : IAsyncDisposable
         ("POST", "/settings/open-file", "settings.file"), ("POST", "/recordings/open-folder", "recordings.folder"),
         ("POST", "/ui", "ui"), ("GET", "/jobs", "jobs"),
         ("POST", "/updates/check", "updates.check"), ("POST", "/updates/install", "updates.install"),
+        ("GET", "/local-whisper/status", "local-whisper.status"),
+        ("POST", "/local-whisper/recommend", "local-whisper.recommend"),
+        ("POST", "/local-whisper/setup", "local-whisper.setup"),
+        ("POST", "/local-whisper/verify", "local-whisper.verify"),
+        ("POST", "/local-whisper/cancel", "local-whisper.cancel"),
         ("POST", "/app/quit", "quit")
     ];
 }

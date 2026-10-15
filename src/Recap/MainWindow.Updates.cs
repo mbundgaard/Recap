@@ -15,7 +15,7 @@ public partial class MainWindow
     private bool _cancelingUpdateShutdown;
     private Task _installTask = Task.CompletedTask;
 
-    private bool WorkPreventsUpdate => _session is not null || _recordingStarted is not null
+    private bool WorkPreventsUpdate => Recap.LocalWhisper.LocalWhisperRuntime.SetupRunning || _session is not null || _recordingStarted is not null
         || !_processingTask.IsCompleted || _isPausingProcessing
         || _meetingWindows.Values.Any(window => window.IsBusy)
         || OwnedWindows.Cast<Window>().Any(window => window.IsVisible);

@@ -3,6 +3,8 @@ using System.Text.Json;
 using System.Windows;
 using System.Windows.Threading;
 using Recap.Agent;
+using Recap.LocalWhisper;
+using Recap.Transcription;
 using Recap.Logging;
 using Recap.Recording;
 using Recap.Updates;
@@ -108,7 +110,7 @@ public partial class MainWindow
     }
 
     private static bool IsAgentRead(string name) => name is "state" or "devices" or "meetings" or "meeting" or "settings" or "jobs"
-        or "speakers" or "transcript.get" or "meeting.file" or "playback.state";
+        or "speakers" or "transcript.get" or "meeting.file" or "playback.state" or "local-whisper.status" or "local-whisper.recommend";
 
     private object AgentState() => new
     {
@@ -136,7 +138,8 @@ public partial class MainWindow
         durationSeconds = _session?.Folder == item.Folder ? _session.Elapsed.TotalSeconds : item.Metadata.Duration.TotalSeconds,
         item.Metadata.Status,
         recordingState = _session?.Folder == item.Folder ? _session.IsPaused ? "paused" : "recording" : null,
-        language = item.Metadata.TranscriptionLanguage ?? "en-US", item.IsProcessing, item.IsManuallyQueued,
+        language = item.Metadata.TranscriptionLanguage ?? "en-US",
+        provider = item.Metadata.TranscriptionProviderId ?? "azure-speech", model = item.Metadata.TranscriptionModel, item.IsProcessing, item.IsManuallyQueued,
         item.ProcessingFailed, item.ProcessingPercent, item.IsProgressIndeterminate,
         item.CanOpen, busy = MeetingWindowBusy(item), hasTranscript = File.Exists(Path.Combine(item.Folder, "final-transcript.md"))
     };
@@ -205,6 +208,8 @@ public partial class MainWindow
                 args.Only(); EnsureMeetingIdle(item!);
                 if (!item!.CanOpen)
                 {
+                    if (MeetingRecognitionService.RequiresProviderReset(item, _settings))
+                        throw new AgentException(409, "Existing results use another provider/model. Use reprocess with confirmation to replace them.");
                     if (_isPausingProcessing) throw new AgentException(409, "Processing is still pausing.");
                     if (!Recordings.Contains(item)) Recordings.Add(item);
                     item.UpdateProcessing(null, false); item.SetManuallyQueued(true); StartPendingProcessing();
@@ -309,9 +314,34 @@ public partial class MainWindow
                 foreach (var hidden in _meetingWindows.Values.Where(x => !x.IsVisible && !x.IsBusy).ToArray()) hidden.Close();
                 if (WorkPreventsUpdate || _availableUpdate is null) throw new AgentException(409, "Check for an update first; stop recording/processing and close meeting windows before installing.");
                 return StartAgentJob("updates.install", null, async () => { _installTask = InstallAvailableUpdateAsync(true); await _installTask; });
+            case "local-whisper.status":
+                args.Only();
+                return new { runtime = LocalWhisperRuntime.Status(_settings.LocalWhisper.ForLanguage("en-US")),
+                    languages = LocalWhisperRuntime.StatusSelected(_settings.LocalWhisper) };
+            case "local-whisper.recommend":
+                args.Only("language");
+                var recommendationLanguage = args.Text("language", "");
+                if (recommendationLanguage.Length != 0) ValidateLanguage(recommendationLanguage);
+                var selected = recommendationLanguage.Length != 0
+                    ? _settings.LocalWhisper.ForLanguage(recommendationLanguage)
+                    : new[] { _settings.LocalWhisper.ForLanguage("en-US"), _settings.LocalWhisper.ForLanguage("da-DK") }
+                        .OrderByDescending(config => LocalWhisperSettings.Models.Single(model => model.Id == config.Model).SuggestedGpuGb).First();
+                try { selected.Validate(); }
+                catch (ArgumentException ex) { throw new AgentException(400, ex.Message); }
+                return HardwareDetection.Recommend(selected, await HardwareDetection.DetectAsync(command.Cancellation));
+            case "local-whisper.setup":
+            case "local-whisper.verify":
+                args.Only("confirm");
+                var download = command.Name == "local-whisper.setup";
+                if (download) args.Confirm();
+                if (LocalWhisperRuntime.SetupRunning) throw new AgentException(409, "Local setup is already running.");
+                var localSettings = _settings.LocalWhisper.Copy();
+                return StartAgentJob(command.Name, null, () => LocalWhisperRuntime.SetupSelectedAsync(localSettings, download));
+            case "local-whisper.cancel":
+                args.Only(); LocalWhisperRuntime.CancelSetup(); return new { cancellationRequested = true };
             case "quit":
                 args.Only("confirm"); args.Confirm();
-                if (_session is not null || OwnedWindows.OfType<SettingsWindow>().Any()
+                if (LocalWhisperRuntime.SetupRunning || _session is not null || OwnedWindows.OfType<SettingsWindow>().Any()
                     || _meetingWindows.Values.Any(x => x.IsBusy && !x.IsSpeechProcessing))
                     throw new AgentException(409, "Stop recording, close Settings, and wait for preparation/transcript jobs before quitting.");
                 return new AgentAccepted(new { closing = true }, () =>
@@ -330,6 +360,7 @@ public partial class MainWindow
         async Task Run()
         {
             try { await work(); job.State = "completed"; }
+            catch (OperationCanceledException) { job.State = "cancelled"; }
             catch (Exception ex)
             {
                 job.State = "failed";

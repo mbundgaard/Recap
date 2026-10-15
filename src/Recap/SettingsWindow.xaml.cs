@@ -25,6 +25,7 @@ public partial class SettingsWindow : Window
         _settings = settings;
 
         InitializeComponent();
+        InitializeLocalWhisper();
         SettingsNavigation.SelectedIndex = 0;
         LoadAudioDevices();
         LoadFields();
@@ -68,6 +69,7 @@ public partial class SettingsWindow : Window
         OpenAiEndpointBox.Text = _settings.OpenAiCompatible.Endpoint;
         OpenAiKeyBox.Password = _settings.OpenAiCompatible.ApiKey;
         ModelDeploymentBox.Text = _settings.OpenAiCompatible.ModelOrDeploymentName;
+        LoadLocalFields(_settings.LocalWhisper);
     }
 
     private void Save_Click(object sender, RoutedEventArgs e)
@@ -80,6 +82,10 @@ public partial class SettingsWindow : Window
             return;
         }
 
+        Recap.LocalWhisper.LocalWhisperSettings local;
+        try { local = ReadLocalFields(); }
+        catch (ArgumentException ex) { MessageBox.Show(this, ex.Message, "Local settings", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
+        _settings.LocalWhisper = local;
         _settings.SpeechRecognitionPaused = AutomaticProcessingBox.IsChecked != true;
         _settings.CheckForUpdatesOnStartup = CheckForUpdatesBox.IsChecked == true;
         _settings.UserName = UserNameBox.Text.Trim();
@@ -113,7 +119,7 @@ public partial class SettingsWindow : Window
 
     private void Reload_Click(object sender, RoutedEventArgs e)
     {
-        _settings = _store.LoadOrCreate();
+        Recap.Agent.AgentSettings.Copy(_store.LoadOrCreate(), _settings);
         LoadFields();
     }
 

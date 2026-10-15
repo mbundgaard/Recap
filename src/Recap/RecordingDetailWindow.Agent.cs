@@ -26,7 +26,7 @@ public partial class RecordingDetailWindow
     {
         if (IsBusy) throw new AgentException(409, "The meeting is busy.");
         if (names.Count != Speakers.Count || Speakers.Any(x => !names.ContainsKey(x.SourceLabel)
-            || string.Equals(names[x.SourceLabel], x.SourceLabel, StringComparison.OrdinalIgnoreCase)))
+            || !IsLocalTranscript && string.Equals(names[x.SourceLabel], x.SourceLabel, StringComparison.OrdinalIgnoreCase)))
             throw new AgentException(400, "Supply a name for every detected speaker, using the source labels from GET speakers.");
         foreach (var speaker in Speakers) speaker.DisplayName = names[speaker.SourceLabel];
         SaveSpeakerMap();

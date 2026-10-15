@@ -12,6 +12,8 @@ public sealed class RecordingMetadata
     public DateTime? EndedUtc { get; set; }
     public string Status { get; set; } = "recording";
     public string? TranscriptionLanguage { get; set; }
+    public string? TranscriptionProviderId { get; set; }
+    public string? TranscriptionModel { get; set; }
     public TimeSpan? RecordedDuration { get; set; }
     public RecordingDevices Devices { get; set; } = new();
     public RecordingFiles Files { get; set; } = new();

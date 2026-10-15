@@ -42,15 +42,18 @@ outside the machine unless the owner explicitly asks. Do not reveal credential v
 - `PATCH /meetings/{id}`: `{"title":"New title"}`. Does not rename the folder.
 - `DELETE /meetings/{id}`: `{"confirm":true}`. Permanently removes audio and all results.
 - `POST /meetings/{id}/process`: no fields. Queues preparation and recognition, even if
-  automatic processing is paused. Poll GET meeting until `canOpen` or `processingFailed`.
+  automatic processing is paused. Local Whisper automatically downloads missing runtime/model
+  assets before offline verification and recognition. Authorizing processing includes these
+  potentially multi-GB first-use downloads; make that clear before obtaining authorization.
+  Poll GET meeting until `canOpen` or `processingFailed`.
 - `POST /meetings/{id}/prepare`: no fields. Local audio preparation only; returns a job.
 - `POST /meetings/{id}/reprocess`: `{"language":"da-DK","confirm":true}`. Deletes speech
   results, names, final transcript and summary, retaining audio, then queues recognition.
 - `POST /processing/pause`, `/processing/resume`: no fields. Saves the automatic-processing
   preference. Pausing cancels active recognition and clears manually queued work; completed
   tracks are retained. An active local preparation finishes before the pause settles.
-- `GET /jobs`: recent preparation, generation and update jobs. States: running, completed,
-  failed. Jobs are in-memory and do not survive restart. Recognition uses meeting progress.
+- `GET /jobs`: recent preparation, generation, local setup and update jobs. States: running, completed,
+  failed, cancelled. Jobs are in-memory and do not survive restart. Recognition uses meeting progress.
 
 Only one API preparation/transcript job runs at a time. Long-running jobs return HTTP 202. Poll rather than repeatedly submitting the operation.
 If a connection drops, check state before retrying a mutation or paid operation.
@@ -61,10 +64,13 @@ Recording, queued and busy meetings reject conflicting writes with HTTP 409.
 - `GET /meetings/{id}/speakers`: labels, names, confirmation state, sample indices,
   sample text, and start/end seconds. Recognition must be complete.
 - `PUT /meetings/{id}/speakers`: `{"names":{"Speaker 1":"Alex","Speaker 2":"Sam"}}`.
-  Supply every returned source label, using real display names rather than source labels.
-  This saves/confirms the names. For a meeting without detected speakers use `{"names":{}}`.
-- `POST /meetings/{id}/transcript`: no fields. Starts LLM transcript generation; returns a
-  job. All detected speakers must be named. An existing final transcript is not overwritten.
+  Supply every returned source label. Azure transcript generation requires real display names;
+  Local Whisper also accepts the original speaker labels, with renaming optional.
+  This saves/confirms the names and rebuilds local Markdown for Local Whisper meetings. For a meeting without detected speakers use `{"names":{}}`.
+- `POST /meetings/{id}/transcript`: no fields. Returns a job. Azure meetings use LLM transcript
+  generation and require names for detected speakers. Local Whisper meetings produce Markdown
+  directly without an LLM; this is also done automatically after recognition. An existing
+  final transcript is not overwritten by this endpoint.
 - `GET /meetings/{id}/transcript`: the Markdown file. Save this HTTP response to export it.
 - `POST /meetings/{id}/copy-transcript`: no fields. Copies the final transcript to the
   Windows clipboard, replacing its current contents.
@@ -101,8 +107,15 @@ Recording, queued and busy meetings reject conflicting writes with HTTP 409.
 - `PATCH /settings`: partial settings object, using the camelCase fields from GET settings.
   Omitted values, including credentials, remain unchanged. Fields include userName,
   recordingsFolder, logsFolder, speechRecognitionPaused, checkForUpdatesOnStartup,
-  speechProviderId (`azure-speech`), llmProviderId (`openai-compatible`), audioDevices,
-  recordingProcessing, azureSpeech, and openAiCompatible.
+  speechProviderId (`azure-speech` or `local-whisper`), llmProviderId (`openai-compatible`), audioDevices,
+  recordingProcessing, azureSpeech, localWhisper, and openAiCompatible.
+  `localWhisper.englishModel` defaults to `base`; `danishModel` defaults to `medium`.
+  Both accept tiny/base/small/medium/large-v3. The meeting's en-US/da-DK language selects
+  its model. There is no persisted single `model` field. Local settings also include
+  device (auto/cpu/cuda), computeType, batchSize, cpuThreads, gpuIndex and speakerCount
+  (0 estimates). Diarization is always enabled, not a writable boolean. There is no local
+  model-download token setting. Changing a selection alone does not download files;
+  processing automatically downloads any required missing assets.
   Credential inputs are `azureSpeech.subscriptionKey` and `openAiCompatible.apiKey`.
   `hasCredential` is read-only; do not send it back. An empty credential string clears it.
   Device IDs are `audioDevices.remoteDeviceId` and `microphoneDeviceId`; null uses defaults.
@@ -111,6 +124,35 @@ Recording, queued and busy meetings reject conflicting writes with HTTP 409.
   library is unchanged until restart. Close Settings before API edits to avoid lost changes.
 - `POST /settings/open-file`: opens the selected local settings file in its associated editor.
   This file contains provider secrets. Do not capture or share its contents.
+
+## Local Whisper setup
+
+- `GET /local-whisper/status`: runtime activity and per-language model readiness in `languages`.
+- `POST /local-whisper/recommend`: only optional field `language` (en-US/da-DK).
+  Without language, recommends shared hardware settings for the heavier selected model.
+  Recommendations do not apply settings or download files. Apply desired fields with PATCH settings.
+- `POST /local-whisper/setup`: body `{"confirm":true}` only. Optional manual setup for
+  automation; normal processing prepares missing assets automatically. Returns a job and
+  downloads/sets up both selected models, shared dependencies and alignment/diarization assets.
+  Shared transcription models are prepared once. Obtain authorization for multi-GB downloads
+  before manual setup. No Hugging Face login, credentials or model-download token is needed;
+  do not send a `token` field.
+- `POST /local-whisper/verify`: no fields. Returns a job; loads selected models offline,
+  without downloading. This is loading verification, not a transcription accuracy benchmark.
+- `POST /local-whisper/cancel`: requests setup/verification cancellation. Poll status/jobs until
+  settled; the response alone is not proof the worker has stopped.
+
+There are no Download/Verify setup buttons or token fields in Settings. Processing downloads
+its required selected model/runtime on demand, automatically verifies offline, then recognizes
+speech locally. Community-1 assets use a hash-pinned GitHub mirror, without Hugging Face
+credentials. Setup failures do not authorize cloud fallback. API verification and manual setup
+remain available for automation; they are not prerequisites for requesting processing.
+
+Files stay under `%LOCALAPPDATA%\\Recap\\LocalWhisper`. Local recognition uses prepared
+16-kHz mono microphone/remote tracks and does not fall back to Azure. Raw-audio retention remains
+controlled by `preserveRawFiles`. Models load per worker invocation; persistent residency/preloading
+is not implemented. Recording pause remains explicit, never triggered by local processing.
+Partial results from another provider/model require confirmed meeting reprocessing.
 
 ## Updates and exit
 

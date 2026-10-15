@@ -6,6 +6,16 @@
   "SpeechRecognitionPaused": true,
   "CheckForUpdatesOnStartup": false,
   "LlmProviderId": "openai-compatible",
+  "LocalWhisper": {
+    "EnglishModel": "base",
+    "DanishModel": "medium",
+    "Device": "auto",
+    "ComputeType": "auto",
+    "BatchSize": 1,
+    "CpuThreads": 4,
+    "GpuIndex": 0,
+    "SpeakerCount": 0
+  },
   "AzureSpeech": {
     "Region": "",
     "Endpoint": "",

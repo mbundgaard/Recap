@@ -14,6 +14,25 @@ Logs can contain local paths, resource endpoints and service diagnostics. Review
 redact them before sharing. Recognized speech text is not deliberately written to
 ordinary progress logs.
 
+## Local Whisper
+
+Processing with Local Whisper automatically downloads missing Python dependencies and
+selected models. Initial setup can transfer several GB. Downloads contact public package/model
+hosts and GitHub; recognition itself uses local prepared audio, with Hugging Face offline mode
+and a Python socket-connect guard. The guard is not an operating-system network sandbox.
+Recap does not fall back to cloud transcription if local processing fails.
+
+Community-1 is mirrored with attribution in this repository. The app fetches it from an
+immutable commit and verifies every asset against an embedded size/SHA-256 manifest.
+No Hugging Face token is required. The uv bootstrap archive is hash checked and Python
+packages are hash locked. Other language/transcription models come from their upstream
+hosts; their cache readiness checks are not an independent full cryptographic audit.
+
+Runtime files and model caches live under `%LOCALAPPDATA%\\Recap\\LocalWhisper`.
+The Python environment isolates dependencies, not operating-system privileges: it runs as
+the current user and loads third-party code/model files. Do not substitute untrusted models
+or dependencies. Local intermediate transcripts contain meeting content and must remain private.
+
 ## Local agent API
 
 Recap starts a local HTTP listener on a randomly assigned IPv4 loopback port. It never
