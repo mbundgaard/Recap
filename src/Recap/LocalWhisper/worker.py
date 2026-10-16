@@ -127,16 +127,80 @@ def normalized_segments(result, remote=True):
     return segments
 
 
-def run(request):
+class ResidentModels:
+    """One model configuration at a time; CPU auxiliaries may remain resident."""
+    def __init__(self):
+        self.key = None
+        self.models = {}
+        self.alignment_language = None
+        self.root = None
+        self.dll_handles = []
+
+    def clear(self):
+        self.models.clear()
+        self.key = None
+        self.alignment_language = None
+        self.release_unused()
+
+    @staticmethod
+    def release_unused():
+        gc.collect()
+        torch = sys.modules.get("torch")
+        if torch is not None and torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+    def select(self, key):
+        if self.key != key:
+            self.clear()
+            self.key = key
+
+    def select_language(self, language):
+        if self.alignment_language != language:
+            # WhisperX transcribe(language=...) updates its ASR tokenizer itself.
+            # Only the language-specific aligner must be replaced.
+            self.models.pop("align", None)
+            self.alignment_language = language
+            self.release_unused()
+
+    def get(self, role, loader, retain=True):
+        if role in self.models:
+            return self.models[role]
+        model = loader()
+        if retain:
+            self.models[role] = model
+        emit("loaded", role=role)
+        return model
+
+    def close(self):
+        self.clear()
+        for handle in self.dll_handles:
+            handle.close()
+        self.dll_handles.clear()
+
+
+def run(request, resident=None):
     mode = request["mode"]
-    if mode not in ("setup", "verify", "transcribe"):
+    if mode not in ("setup", "verify", "transcribe") or (resident is not None and mode != "transcribe"):
         raise ValueError("Invalid worker mode")
     cfg = request["settings"]
     if cfg["model"] not in MODELS or cfg["device"] not in ("cpu", "cuda"):
         raise ValueError("Unsupported model or device")
     offline = mode != "setup"
     root = Path(request["root"])
-    dll_handles = configure(root, offline)
+    if resident is None:
+        dll_handles = configure(root, offline)
+    else:
+        # A parent-owned resident belongs to one installation root. Configure once so
+        # DLL handles and PATH entries do not accumulate across requests.
+        if resident.root is None:
+            resident.dll_handles = configure(root, True)
+            resident.root = root.resolve()
+        elif resident.root != root.resolve():
+            raise ValueError("Resident installation root cannot change")
+        resident.select((str(root.resolve()), request["engineKey"], cfg["model"],
+                         cfg["device"], cfg["gpuIndex"], cfg["computeType"],
+                         cfg["cpuThreads"]))
+        resident.select_language(request["language"])
     import logging
     logging.disable(logging.CRITICAL)
     import torch
@@ -234,9 +298,12 @@ def run(request):
 
     def transcribe():
         emit("progress", phase="Recognizing speech", percent=5)
-        model = load_asr(language)
+        model = (resident.get("asr", lambda: load_asr(language))
+                 if resident is not None else load_asr(language))
         try:
-            return model.transcribe(audio, batch_size=cfg["batchSize"], language=language,
+            # Explicit task avoids passing faster-whisper's numeric tokenizer.task
+            # back into WhisperX's tokenizer constructor when the language changes.
+            return model.transcribe(audio, batch_size=cfg["batchSize"], language=language, task="transcribe",
                 progress_callback=lambda percent: emit("progress", phase="Recognizing speech", percent=5 + percent * .45))
         finally:
             del model
@@ -247,7 +314,8 @@ def run(request):
         if not asr.get("segments"):
             return {"segments": [], "word_segments": []}
         emit("progress", phase="Aligning words", percent=50)
-        aligner, metadata = load_alignment(language)
+        aligner, metadata = (resident.get("align", lambda: load_alignment(language), retain=device == "cpu")
+                             if resident is not None else load_alignment(language))
         try:
             return whisperx.align(asr["segments"], aligner, metadata, audio, torch_device,
                 return_char_alignments=False,
@@ -262,7 +330,8 @@ def run(request):
         if not aligned.get("segments") or not cfg["diarization"] or not remote:
             return []
         emit("progress", phase="Identifying speakers", percent=75)
-        diarizer = load_diarization()
+        diarizer = (resident.get("diarization", load_diarization, retain=device == "cpu")
+                    if resident is not None else load_diarization())
         try:
             frame = diarizer(audio, num_speakers=cfg["speakerCount"] or None,
                 progress_callback=lambda percent: emit("progress", phase="Identifying speakers", percent=75 + percent * .24))
@@ -281,9 +350,24 @@ def run(request):
 
 
 def main():
+    resident = ResidentModels() if sys.argv[1:] == ["--resident"] else None
     try:
+        if sys.argv[1:] and resident is None:
+            raise ValueError("Invalid worker arguments")
+        if resident is not None:
+            # Identify the actual interpreter before the parent sends any work.
+            emit("ready", pid=os.getpid())
+            # No work or downloads until a complete newline-delimited request arrives.
+            for line in sys.stdin:
+                request = json.loads(line)
+                # OUTPUT remains the original protocol stream; library output never
+                # goes there. The parent discards stderr without logging its contents.
+                with contextlib.redirect_stdout(sys.stderr):
+                    ok = run(request, resident)
+                if not ok:
+                    return 1
+            return 0
         request = json.load(sys.stdin)
-        # Libraries can print recognized text, file paths or access failures. Parent discards stderr.
         with contextlib.redirect_stdout(sys.stderr):
             ok = run(request)
         return 0 if ok else 1
@@ -294,6 +378,10 @@ def main():
         code = "access_denied" if status in (401, 403) else "out_of_memory" if "OutOfMemory" in name or isinstance(error, MemoryError) else "runtime_failed"
         emit("error", code=code)
         return 1
+    finally:
+        if resident is not None:
+            with contextlib.redirect_stdout(sys.stderr):
+                resident.close()
 
 
 if __name__ == "__main__":

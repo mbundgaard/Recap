@@ -289,6 +289,12 @@
                                                         <Setter Property="BorderBrush" Value="#22272E" />
                                                         <Setter Property="Foreground" Value="#FFFDF8" />
                                                     </DataTrigger>
+                                                    <DataTrigger Binding="{Binding IsProcessing}" Value="True">
+                                                        <Setter Property="Background" Value="#FFFDF8" />
+                                                        <Setter Property="BorderBrush" Value="#D7D1C6" />
+                                                        <Setter Property="Foreground" Value="#22272E" />
+                                                        <Setter Property="Padding" Value="8,0" />
+                                                    </DataTrigger>
                                                 </Style.Triggers>
                                             </Style>
                                         </Button.Style>

@@ -109,17 +109,35 @@ public sealed class RecordingListItem(string folder, RecordingMetadata metadata)
 {
     private string? _processingMessage;
     public bool IsProcessing { get; private set; }
+    public bool IsCancellationPending { get; private set; }
     public bool IsManuallyQueued { get; private set; }
-    public string PrimaryActionText => IsProcessing ? "Processing…"
-        : IsManuallyQueued ? "Queued" : CanOpen ? "Open" : ProcessingFailed ? "Retry" : "Process";
-    public bool CanUsePrimaryAction => !IsProcessing && !IsManuallyQueued && Metadata.Status == "completed";
-    public string PrimaryActionHint => CanOpen ? "Open meeting details"
+    public string PrimaryActionText => IsProcessing ? IsCancellationPending ? "Cancelling…" : "Cancel"
+        : IsManuallyQueued ? "Queued" : CanOpen ? "Open" : ProcessingFailed || ProcessingCancelled ? "Retry" : "Process";
+    public bool CanUsePrimaryAction => IsProcessing ? !IsCancellationPending
+        : !IsManuallyQueued && Metadata.Status == "completed";
+    public string PrimaryActionHint => IsProcessing
+        ? IsCancellationPending ? "Waiting for this meeting's processing to stop" : "Cancel processing for this meeting"
+        : CanOpen ? "Open meeting details"
         : "Prepare audio and recognize speech for this meeting only. Uses your configured speech service; charges may apply.";
     public string MeetingStatusText => IsProcessing ? _processingMessage ?? "Processing…"
         : IsManuallyQueued ? "Queued for processing"
+        : ProcessingCancelled ? "Processing cancelled — retry when ready"
         : ProcessingFailed ? "Processing failed — try again"
         : CanOpen ? HasFinalTranscript ? "Transcript ready" : "Ready to review"
         : Metadata.Status == "recording" ? "Recording" : "Ready to process";
+
+    public void RequestProcessingCancellation()
+    {
+        if (!IsProcessing || IsCancellationPending) return;
+        IsCancellationPending = true;
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(string.Empty));
+    }
+
+    public void MarkProcessingCancelled()
+    {
+        ProcessingCancelled = true;
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(string.Empty));
+    }
 
     public void SetManuallyQueued(bool queued)
     {
@@ -127,6 +145,7 @@ public sealed class RecordingListItem(string folder, RecordingMetadata metadata)
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(string.Empty));
     }
     public bool ProcessingFailed { get; private set; }
+    public bool ProcessingCancelled { get; private set; }
     public double ProcessingPercent { get; private set; }
     public bool IsProgressIndeterminate { get; private set; }
     public bool ShowProgress => IsProcessing;
@@ -144,6 +163,8 @@ public sealed class RecordingListItem(string folder, RecordingMetadata metadata)
     {
         _processingMessage = message;
         IsProcessing = processing;
+        if (!processing) IsCancellationPending = false;
+        ProcessingCancelled = false;
         ProcessingFailed = failed;
         ProcessingPercent = percent;
         IsProgressIndeterminate = indeterminate;

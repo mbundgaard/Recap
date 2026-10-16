@@ -169,6 +169,7 @@ public sealed class AgentServer : IAsyncDisposable
         ("GET", "/meetings", "meetings"), ("GET", "/meetings/{id}", "meeting"),
         ("PATCH", "/meetings/{id}", "meeting.rename"), ("DELETE", "/meetings/{id}", "meeting.delete"),
         ("POST", "/meetings/{id}/process", "meeting.process"),
+        ("POST", "/meetings/{id}/cancel", "meeting.cancel"),
         ("POST", "/meetings/{id}/prepare", "meeting.prepare"),
         ("POST", "/meetings/{id}/reprocess", "meeting.reprocess"),
         ("POST", "/processing/pause", "processing.pause"), ("POST", "/processing/resume", "processing.resume"),

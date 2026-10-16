@@ -60,6 +60,7 @@ public sealed class MeetingRecognitionService(RecordingLibrary library, AppSetti
             return;
         }
         var local = settings.SpeechProviderId == "local-whisper";
+        await using var localBatch = local ? Recap.LocalWhisper.LocalWhisperRuntime.BeginProcessingBatch() : null;
         if (!local && settings.SpeechProviderId != "azure-speech")
             throw new InvalidOperationException("Select a supported speech provider in Settings.");
         if (RequiresProviderReset(item, settings))

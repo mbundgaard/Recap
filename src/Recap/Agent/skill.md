@@ -38,7 +38,8 @@ outside the machine unless the owner explicitly asks. Do not reveal credential v
 ## Meetings and processing
 
 - `GET /meetings`: list meetings and their readiness/progress; newest first.
-- `GET /meetings/{id}`: one meeting's state.
+- `GET /meetings/{id}`: one meeting's state, including `processingCancelled` and
+  `isCancellationPending`. Cancellation is distinct from processing failure.
 - `PATCH /meetings/{id}`: `{"title":"New title"}`. Does not rename the folder.
 - `DELETE /meetings/{id}`: `{"confirm":true}`. Permanently removes audio and all results.
 - `POST /meetings/{id}/process`: no fields. Queues preparation and recognition, even if
@@ -46,6 +47,12 @@ outside the machine unless the owner explicitly asks. Do not reveal credential v
   assets before offline verification and recognition. Authorizing processing includes these
   potentially multi-GB first-use downloads; make that clear before obtaining authorization.
   Poll GET meeting until `canOpen` or `processingFailed`.
+- `POST /meetings/{id}/cancel`: no fields; requires that this meeting is actively processing.
+  Requests cancellation without deleting audio or completed results. Audio preparation already
+  running finishes safely before cancellation settles. Poll meeting state; an accepted request
+  is not proof of completion. UI actions progress from Cancel to disabled Cancelling… to Retry.
+  Cancelled meetings are excluded from automatic retry for this app session until an explicit
+  `/process` retry. This does not pause recording or delete results like `/reprocess` does.
 - `POST /meetings/{id}/prepare`: no fields. Local audio preparation only; returns a job.
 - `POST /meetings/{id}/reprocess`: `{"language":"da-DK","confirm":true}`. Deletes speech
   results, names, final transcript and summary, retaining audio, then queues recognition.
@@ -127,7 +134,9 @@ Recording, queued and busy meetings reject conflicting writes with HTTP 409.
 
 ## Local Whisper setup
 
-- `GET /local-whisper/status`: runtime activity and per-language model readiness in `languages`.
+- `GET /local-whisper/status`: runtime activity, per-language model readiness in `languages`,
+  and `workerResident`. That boolean means a worker process is resident, not necessarily that
+  models are loaded: cached checkpoints can skip model loading.
 - `POST /local-whisper/recommend`: only optional field `language` (en-US/da-DK).
   Without language, recommends shared hardware settings for the heavier selected model.
   Recommendations do not apply settings or download files. Apply desired fields with PATCH settings.
@@ -150,8 +159,14 @@ remain available for automation; they are not prerequisites for requesting proce
 
 Files stay under `%LOCALAPPDATA%\\Recap\\LocalWhisper`. Local recognition uses prepared
 16-kHz mono microphone/remote tracks and does not fall back to Azure. Raw-audio retention remains
-controlled by `preserveRawFiles`. Models load per worker invocation; persistent residency/preloading
-is not implemented. Recording pause remains explicit, never triggered by local processing.
+controlled by `preserveRawFiles`. A queue starts no worker until its first local recognition
+request. Matching model/settings reuse the worker and ASR across tracks and meetings. Switching
+English/Danish with the same model retains ASR and replaces the aligner. Model/configuration
+changes dispose the old worker; queue completion, pause, cancellation or failure unloads it.
+CPU workers retain auxiliary models; GPU workers release alignment/diarization after their stage
+while retaining ASR. GPU memory must still fit ASR plus one auxiliary; this has not been validated
+on real GPU workloads. There is no residency setting or preload control. Recording pause remains
+explicit, never triggered by local processing.
 Partial results from another provider/model require confirmed meeting reprocessing.
 
 ## Updates and exit

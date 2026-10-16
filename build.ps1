@@ -3,7 +3,7 @@ param(
     [ValidateSet('win-x64', 'win-arm64')]
     [string]$Runtime = 'win-x64',
     [ValidatePattern('^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$')]
-    [string]$Version = '0.3.0'
+    [string]$Version = '0.4.0'
 )
 
 $ErrorActionPreference = 'Stop'

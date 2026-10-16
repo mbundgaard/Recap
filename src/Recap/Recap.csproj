@@ -7,10 +7,11 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <ApplicationIcon>Assets\icon.ico</ApplicationIcon>
-    <Version>0.3.0</Version>
+    <Version>0.4.0</Version>
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Recap.ProcessingTests" />
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <EmbeddedResource Include="Agent\skill.md" LogicalName="Recap.AgentSkill" />
     <EmbeddedResource Include="LocalWhisper\worker.py" LogicalName="Recap.LocalWhisper.worker.py" />

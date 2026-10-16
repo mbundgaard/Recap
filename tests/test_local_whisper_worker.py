@@ -1,10 +1,13 @@
 """Dependency-free worker checks: no models, network, or real meeting audio."""
+import ast
 import importlib.util
 import json
 from pathlib import Path
 import socket
 import tempfile
 import unittest
+from unittest.mock import Mock, patch
+import weakref
 
 source = Path(__file__).resolve().parents[1] / 'src/Recap/LocalWhisper/worker.py'
 spec = importlib.util.spec_from_file_location('recap_worker', source)
@@ -40,6 +43,85 @@ class WorkerTests(unittest.TestCase):
         self.assertTrue(all(segment['speaker'] == 'Me' for segment in worker.normalized_segments(result, False)))
         result['segments'][0]['words'].pop()
         self.assertEqual(worker.normalized_segments(result)[0]['text'], 'Hello world.')
+
+    def test_transcribe_passes_explicit_string_task_for_language_switch(self):
+        # WhisperX may otherwise reuse tokenizer.task, a numeric token ID in
+        # faster-whisper 1.2.1, when rebuilding its tokenizer for another language.
+        tree = ast.parse(source.read_text(encoding='utf-8'))
+        calls = [node for node in ast.walk(tree)
+                 if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                 and node.func.attr == 'transcribe'
+                 and isinstance(node.func.value, ast.Name) and node.func.value.id == 'model']
+        self.assertTrue(calls, 'Expected the production model.transcribe call')
+        for call in calls:
+            keywords = {keyword.arg: keyword.value for keyword in call.keywords}
+            task = keywords.get('task')
+            self.assertIsInstance(task, ast.Constant, 'Pass a literal task, not tokenizer.task')
+            self.assertEqual(task.value, 'transcribe')
+            language = keywords.get('language')
+            self.assertIsInstance(language, ast.Name)
+            self.assertEqual(language.id, 'language')
+
+    def test_resident_same_language_reuses_all_models(self):
+        cache = worker.ResidentModels()
+        loaders = {role: Mock(side_effect=lambda: Mock()) for role in ('asr', 'align', 'diarization')}
+        key = ('root', 'engine', 'base', 'cpu', 0, 'int8', 4)
+        with patch.object(worker, 'emit') as emit:
+            try:
+                cache.select(key)
+                cache.select_language('en')
+                first = {role: cache.get(role, loader) for role, loader in loaders.items()}
+                cache.select(key)
+                cache.select_language('en')
+                for role, loader in loaders.items():
+                    self.assertIs(cache.get(role, loader), first[role])
+                    loader.assert_called_once_with()
+                self.assertEqual(emit.call_count, 3)
+            finally:
+                cache.close()
+
+    def test_resident_language_switch_keeps_asr_and_diarizer(self):
+        cache = worker.ResidentModels()
+        class Model:
+            pass
+        key = ('root', 'engine', 'base', 'cpu', 0, 'int8', 4)
+        asr_loader, diarizer_loader = Mock(side_effect=Model), Mock(side_effect=Model)
+        with patch.object(worker, 'emit') as emit:
+            try:
+                cache.select(key)
+                cache.select_language('en')
+                asr = cache.get('asr', asr_loader)
+                diarizer = cache.get('diarization', diarizer_loader)
+                old_aligner = weakref.ref(cache.get('align', Model))
+                cache.select(key)
+                cache.select_language('da')
+                self.assertIsNone(old_aligner(), 'Old language aligner must be released before replacement')
+                self.assertIs(cache.get('asr', asr_loader), asr)
+                self.assertIs(cache.get('diarization', diarizer_loader), diarizer)
+                cache.get('align', Model)
+                asr_loader.assert_called_once_with()
+                diarizer_loader.assert_called_once_with()
+                self.assertEqual([call.kwargs['role'] for call in emit.call_args_list],
+                                 ['asr', 'diarization', 'align', 'align'])
+                cache.select(('root', 'engine', 'medium', 'cpu', 0, 'int8', 4))
+                self.assertEqual(cache.models, {})
+                self.assertIsNone(cache.alignment_language)
+            finally:
+                cache.close()
+
+    def test_resident_gpu_auxiliary_not_retained(self):
+        cache = worker.ResidentModels()
+        with patch.object(worker, 'emit'):
+            try:
+                asr = cache.get('asr', object)
+                loader = Mock(side_effect=object)
+                cache.get('align', loader, retain=False)
+                cache.get('align', loader, retain=False)
+                self.assertEqual(loader.call_count, 2)
+                self.assertNotIn('align', cache.models)
+                self.assertIs(cache.get('asr', object), asr)
+            finally:
+                cache.close()
 
     def test_offline_guard(self):
         originals = socket.socket.connect, socket.socket.connect_ex, socket.create_connection

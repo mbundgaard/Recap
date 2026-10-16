@@ -295,7 +295,7 @@ public partial class MainWindow : Window
         {
             // Keep active jobs and their metadata instance stable across list refreshes.
             Recordings.Add(existing.TryGetValue(item.Folder, out var previous)
-                && (previous.IsProcessing || previous.IsManuallyQueued || previous.ProcessingFailed
+                && (previous.IsProcessing || previous.IsManuallyQueued || previous.ProcessingFailed || previous.ProcessingCancelled
                     || _meetingWindows.ContainsKey(previous.Folder)) ? previous : item);
         }
         UpdatePausedMeetings();
@@ -313,7 +313,7 @@ public partial class MainWindow : Window
     private void UpdatePausedMeetings()
     {
         foreach (var item in Recordings.Where(x => x.Metadata.Status == "completed"
-            && !x.CanOpen && !x.IsProcessing && !x.IsManuallyQueued && !x.ProcessingFailed))
+            && !x.CanOpen && !x.IsProcessing && !x.IsManuallyQueued && !x.ProcessingFailed && !x.ProcessingCancelled))
             item.UpdateProcessing(_settings.SpeechRecognitionPaused ? "Automatic processing paused" : null, false);
     }
 
@@ -359,20 +359,35 @@ public partial class MainWindow : Window
 
     private void StartPendingProcessing()
     {
-        if (_isUpdating || !_startupRendered || !_processingTask.IsCompleted || _processingCancellation.IsCancellationRequested
-            || (_settings.SpeechRecognitionPaused && !Recordings.Any(x => x.IsManuallyQueued))) return;
+        if (_isUpdating || _isPausingProcessing || !_startupRendered || !_processingTask.IsCompleted || _processingCancellation.IsCancellationRequested
+            || NextPendingRecording() is null) return;
         _processingTask = ProcessPendingMeetingsAsync();
     }
 
+    private RecordingListItem? NextPendingRecording() => Recordings
+        .Where(x => x.Metadata.Status == "completed" && !x.CanOpen && !x.ProcessingFailed && !x.ProcessingCancelled
+            && !MeetingWindowBusy(x) && !_agentMutationMeetings.Contains(x.Folder)
+            && (!_settings.SpeechRecognitionPaused || x.IsManuallyQueued))
+        .OrderBy(x => x.Metadata.StartedLocal).FirstOrDefault();
+
     private async Task ProcessPendingMeetingsAsync()
+    {
+        var batch = Recap.LocalWhisper.LocalWhisperRuntime.BeginProcessingBatch();
+        try { await ProcessPendingMeetingsCoreAsync(); }
+        finally
+        {
+            await batch.DisposeAsync();
+            // A new manual job may arrive while final worker cleanup awaits exit.
+            if (!Dispatcher.HasShutdownStarted)
+                _ = Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(StartPendingProcessing));
+        }
+    }
+
+    private async Task ProcessPendingMeetingsCoreAsync()
     {
         while (!_processingCancellation.IsCancellationRequested)
         {
-            var item = Recordings
-                .Where(x => x.Metadata.Status == "completed" && !x.CanOpen && !x.ProcessingFailed && !MeetingWindowBusy(x) && !_agentMutationMeetings.Contains(x.Folder)
-                    && (!_settings.SpeechRecognitionPaused || x.IsManuallyQueued))
-                .OrderBy(x => x.Metadata.StartedLocal)
-                .FirstOrDefault();
+            var item = NextPendingRecording();
             if (item is null) return;
             item.SetManuallyQueued(false);
             using var jobCancellation = CancellationTokenSource.CreateLinkedTokenSource(_processingCancellation.Token);
@@ -385,6 +400,8 @@ public partial class MainWindow : Window
             });
             try
             {
+                if (_settings.SpeechProviderId != "local-whisper")
+                    await Recap.LocalWhisper.LocalWhisperRuntime.UnloadAsync();
                 await new MeetingRecognitionService(_library, _settings)
                     .ProcessAsync(item, progress, jobCancellation.Token);
                 item.UpdateProcessing(null, false);
@@ -393,11 +410,19 @@ public partial class MainWindow : Window
             }
             catch (OperationCanceledException) when (jobCancellation.IsCancellationRequested)
             {
+                await Recap.LocalWhisper.LocalWhisperRuntime.UnloadAsync();
+                if (item.IsCancellationPending)
+                {
+                    item.UpdateProcessing("Processing cancelled", false);
+                    item.MarkProcessingCancelled();
+                    continue;
+                }
                 item.UpdateProcessing("Automatic processing paused", false);
                 return;
             }
             catch (Exception ex)
             {
+                await Recap.LocalWhisper.LocalWhisperRuntime.UnloadAsync();
                 AppLogger.Error(ex, $"Background meeting processing failed: {item.Folder}");
                 item.UpdateProcessing($"Processing failed: {ex.Message}", false, failed: true);
             }
@@ -408,9 +433,21 @@ public partial class MainWindow : Window
         }
     }
 
+    private void CancelMeetingProcessing(RecordingListItem item)
+    {
+        if (!item.IsProcessing || item.IsCancellationPending || _activeProcessingCancellation is null) return;
+        item.RequestProcessingCancellation();
+        _activeProcessingCancellation.Cancel();
+    }
+
     private void MeetingAction_Click(object sender, RoutedEventArgs e)
     {
         if (((FrameworkElement)sender).DataContext is not RecordingListItem item || !item.CanUsePrimaryAction) return;
+        if (item.IsProcessing)
+        {
+            CancelMeetingProcessing(item);
+            return;
+        }
         if (item.CanOpen)
         {
             OpenRecordingDetail_Click(sender, e);

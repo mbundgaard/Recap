@@ -140,7 +140,7 @@ public partial class MainWindow
         recordingState = _session?.Folder == item.Folder ? _session.IsPaused ? "paused" : "recording" : null,
         language = item.Metadata.TranscriptionLanguage ?? "en-US",
         provider = item.Metadata.TranscriptionProviderId ?? "azure-speech", model = item.Metadata.TranscriptionModel, item.IsProcessing, item.IsManuallyQueued,
-        item.ProcessingFailed, item.ProcessingPercent, item.IsProgressIndeterminate,
+        item.ProcessingFailed, item.ProcessingCancelled, item.IsCancellationPending, item.ProcessingPercent, item.IsProgressIndeterminate,
         item.CanOpen, busy = MeetingWindowBusy(item), hasTranscript = File.Exists(Path.Combine(item.Folder, "final-transcript.md"))
     };
 
@@ -204,6 +204,11 @@ public partial class MainWindow
                 }
                 finally { _agentMutationMeetings.Remove(item.Folder); }
                 RefreshRecordings(); return new { deleted = command.MeetingId };
+            case "meeting.cancel":
+                args.Only();
+                if (!item!.IsProcessing) throw new AgentException(409, "This meeting is not processing.");
+                CancelMeetingProcessing(item);
+                return new { cancellationRequested = item.IsCancellationPending };
             case "meeting.process":
                 args.Only(); EnsureMeetingIdle(item!);
                 if (!item!.CanOpen)
@@ -317,7 +322,7 @@ public partial class MainWindow
             case "local-whisper.status":
                 args.Only();
                 return new { runtime = LocalWhisperRuntime.Status(_settings.LocalWhisper.ForLanguage("en-US")),
-                    languages = LocalWhisperRuntime.StatusSelected(_settings.LocalWhisper) };
+                    workerResident = LocalWhisperRuntime.WorkerResident, languages = LocalWhisperRuntime.StatusSelected(_settings.LocalWhisper) };
             case "local-whisper.recommend":
                 args.Only("language");
                 var recommendationLanguage = args.Text("language", "");

@@ -21,7 +21,11 @@ oldest first, with progress shown in the list. If something fails, you can retry
 reprocessing a track that has already finished.
 
 You can pause automatic processing when your connection is unreliable and continue
-later. Recording still works while processing is paused.
+later. Recording still works while processing is paused. To stop one active meeting,
+click **Cancel**. The button shows **Cancelling…** until processing stops, then **Retry**.
+Cancellation does not delete audio or completed results; audio preparation finishes safely
+before stopping. Cancelled meetings are excluded from automatic retry for this app session
+until you explicitly retry them.
 
 With Azure, once speech recognition is done, listen to short samples to identify the
 speakers, then create the final transcript. The LLM is instructed to keep the original
@@ -70,8 +74,10 @@ when processing starts. First use can download several GB; offline verification 
 runs automatically before local recognition. Community-1 speaker models come from a
 GitHub mirror, with no Hugging Face login or token required.
 
-Local workers and models load per operation; persistent model residency and preload
-are not implemented. Processing does not automatically pause recording. Optional manual
+Local processing starts its worker only when needed and reuses it and the speech model
+across tracks and queued meetings with matching settings. Switching models/settings,
+ending the queue, pausing, cancelling or failing releases the worker. There is no preload
+or residency setting. Processing does not automatically pause recording. Optional manual
 setup remains available through the API for automation, without a model-download token.
 See [Local Whisper](docs/local-whisper.md) for settings, storage and resource requirements.
 

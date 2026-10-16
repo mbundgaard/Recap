@@ -163,7 +163,61 @@ internal static class AgentTests
         Check(Directory.Exists(row.Folder), "Unconfirmed deletion must not touch the recording.");
         row.UpdateProcessing("busy", true);
         Reject(409, "meeting.delete", id, new { confirm = true });
+        var activeCancellationField = typeof(Recap.MainWindow).GetField("_activeProcessingCancellation",
+            BindingFlags.Instance | BindingFlags.NonPublic)!;
+        using (var activeCancellation = new CancellationTokenSource())
+        {
+            activeCancellationField.SetValue(window, activeCancellation);
+            try
+            {
+                Run("meeting.cancel", id);
+                Check(activeCancellation.IsCancellationRequested && row.IsCancellationPending
+                    && !row.CanUsePrimaryAction, "API cancel must signal shared processing token and update row state.");
+            }
+            finally { activeCancellationField.SetValue(window, null); }
+        }
         row.UpdateProcessing(null, false);
+
+        // Polling the list must not turn an explicitly cancelled meeting back into
+        // pending work. Block execution independently so a regression cannot call a
+        // real provider; inspect the actual scheduler selection in both modes.
+        var transcriptPath = Path.Combine(row.Folder, "raw-microphone-transcript.json");
+        var savedTranscript = File.Exists(transcriptPath) ? File.ReadAllBytes(transcriptPath) : null;
+        var processingField = typeof(Recap.MainWindow).GetField("_processingTask", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var savedProcessingTask = processingField.GetValue(window);
+        var savedPaused = settings.SpeechRecognitionPaused;
+        var nextPending = typeof(Recap.MainWindow).GetMethod("NextPendingRecording", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        try
+        {
+            processingField.SetValue(window, new TaskCompletionSource().Task);
+            File.Delete(transcriptPath);
+            Check(row.Metadata.Status == "completed" && !row.CanOpen, "Cancellation refresh fixture must be completed but not ready.");
+            row.UpdateProcessing("Processing cancelled", false);
+            row.MarkProcessingCancelled();
+            foreach (var pausedMode in new[] { true, false })
+            {
+                settings.SpeechRecognitionPaused = pausedMode;
+                for (var poll = 0; poll < 2; poll++)
+                {
+                    Run("meetings");
+                    var refreshed = window.Recordings.Single();
+                    Check(ReferenceEquals(refreshed, row) && refreshed.ProcessingCancelled,
+                        "GET meetings must preserve cancelled row and cancellation flag across polling in either processing mode.");
+                    Check(!refreshed.IsManuallyQueued && !refreshed.IsProcessing
+                        && refreshed.PrimaryActionText == "Retry" && refreshed.CanUsePrimaryAction,
+                        "Polling cancelled meetings must retain enabled Retry without queueing or restarting them.");
+                    Check(nextPending.Invoke(window, null) is null,
+                        "Automatic and paused schedulers must exclude explicitly cancelled meetings after refresh.");
+                }
+            }
+        }
+        finally
+        {
+            settings.SpeechRecognitionPaused = savedPaused;
+            processingField.SetValue(window, savedProcessingTask);
+            if (savedTranscript is not null) File.WriteAllBytes(transcriptPath, savedTranscript);
+            row.UpdateProcessing(null, false);
+        }
         Run("meeting.rename", id, new { title = "Agent test meeting" });
         Check(new RecordingLibrary(settings.RecordingsFolder).LoadRecordings().Single().Title == "Agent test meeting", "API rename must persist through the same library as the UI.");
         row = window.Recordings.Single();

@@ -23,6 +23,61 @@ public static class LocalWhisperRuntime
     private static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     private static readonly object Gate = new();
     private static readonly SemaphoreSlim AutomaticSetupGate = new(1, 1);
+    private static readonly SemaphoreSlim ResidentGate = new(1, 1);
+    private static ResidentWhisperWorker? _residentWorker;
+    private static FileStream? _residentLease;
+    private static LocalWhisperSettings? _residentSettings;
+    private static string? _residentKey;
+    private static int _processingBatches;
+
+    public static bool WorkerResident => Volatile.Read(ref _residentWorker) is not null;
+
+    // A queue owns a scope; no models/processes are started until its first local request.
+    public static IAsyncDisposable BeginProcessingBatch()
+    {
+        lock (Gate) _processingBatches++;
+        return new ProcessingBatch();
+    }
+
+    private sealed class ProcessingBatch : IAsyncDisposable
+    {
+        private int _disposed;
+        public async ValueTask DisposeAsync()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+            await ResidentGate.WaitAsync();
+            try
+            {
+                bool idle;
+                lock (Gate) idle = --_processingBatches == 0;
+                if (idle) await ReleaseResidentCoreAsync();
+            }
+            finally { ResidentGate.Release(); }
+        }
+    }
+
+    public static async Task UnloadAsync()
+    {
+        await ResidentGate.WaitAsync();
+        try { await ReleaseResidentCoreAsync(); }
+        finally { ResidentGate.Release(); }
+    }
+
+    private static async Task ReleaseResidentCoreAsync()
+    {
+        try
+        {
+            if (_residentWorker is not null) await _residentWorker.DisposeAsync();
+        }
+        finally
+        {
+            _residentWorker = null;
+            _residentSettings = null;
+            _residentKey = null;
+            _residentLease?.Dispose();
+            _residentLease = null;
+        }
+    }
     private static CancellationTokenSource? _setupCancellation;
     private static LocalProgress _progress = new("Not checked", 0);
     public static bool SetupRunning { get { lock (Gate) return _setupCancellation is not null; } }
@@ -100,8 +155,12 @@ public static class LocalWhisperRuntime
             _setupCancellation = linked;
         }
         void Report(LocalProgress value) { lock (Gate) _progress = value; progress?.Report(value); }
+        var entered = false;
         try
         {
+            await ResidentGate.WaitAsync(linked.Token);
+            entered = true;
+            await ReleaseResidentCoreAsync();
             Report(new("Waiting for the local processor", 0));
             using var lease = await AcquireAsync(linked.Token);
             var installedBackends = new HashSet<string>();
@@ -150,25 +209,66 @@ public static class LocalWhisperRuntime
         }
         catch (OperationCanceledException) { Report(new("Setup cancelled. Completed downloads are kept for retry.", 0)); throw; }
         catch (Exception ex) { Report(new("Setup or verification failed: " + ex.Message, 0)); throw; }
-        finally { lock (Gate) _setupCancellation = null; }
+        finally
+        {
+            if (entered) ResidentGate.Release();
+            lock (Gate) _setupCancellation = null;
+        }
     }
 
     public static async Task TranscribeAsync(LocalWhisperSettings selected, string audio, string track, string language,
         string prefix, string result, IProgress<LocalProgress> progress, CancellationToken cancellation)
     {
         if (!Supported) throw new InvalidOperationException("Local Whisper currently requires Windows x64.");
-        progress.Report(new("Waiting for the local processor", 0));
-        using var lease = await AcquireAsync(cancellation);
-        var settings = await HardwareDetection.ResolveAsync(selected, cancellation);
-        if (selected.Device == "auto" && settings.Device == "cuda" && !IsReady(settings, "cuda") && IsReady(settings, "cpu"))
+        selected.Validate();
+        var key = JsonSerializer.Serialize(selected.WorkerSettings(), Json);
+        var prepared = false;
+        while (true)
         {
-            settings.Device = "cpu";
-            settings.ComputeType = selected.ComputeType == "auto" ? "int8" : selected.ComputeType;
-            settings.Validate();
-        }
-        if (!IsReady(settings, settings.Device))
-        {
-            lease.Dispose(); // Setup acquires the same cross-process lease; do not deadlock.
+            progress.Report(new("Waiting for the local processor", 0));
+            LocalWhisperSettings settings;
+            await ResidentGate.WaitAsync(cancellation);
+            try
+            {
+                // Reuse the resolved device while resident: our own GPU allocation must not
+                // cause Auto detection to select a different backend on the next track.
+                if (_residentKey != key) await ReleaseResidentCoreAsync();
+                _residentLease ??= await AcquireAsync(cancellation);
+                settings = _residentSettings?.Copy() ?? await HardwareDetection.ResolveAsync(selected, cancellation);
+                if (selected.Device == "auto" && settings.Device == "cuda" && !IsReady(settings, "cuda") && IsReady(settings, "cpu"))
+                {
+                    settings.Device = "cpu";
+                    settings.ComputeType = selected.ComputeType == "auto" ? "int8" : selected.ComputeType;
+                    settings.Validate();
+                }
+                if (IsReady(settings, settings.Device))
+                {
+                    _residentSettings = settings.Copy();
+                    _residentKey = key;
+                    _residentWorker ??= new ResidentWhisperWorker(CreateStartInfo(PythonPath(settings.Device),
+                        ["-I", "-X", "pycache_prefix=" + Path.Combine(LocalWhisperSettings.Root, "cache", "python"), InstallWorker(), "--resident"]));
+                    var request = JsonSerializer.Serialize(new
+                    {
+                        mode = "transcribe", root = LocalWhisperSettings.Root, settings = settings.WorkerSettings(),
+                        engineKey = EngineKey(settings.Device), audio, track, language, outputPrefix = prefix, result
+                    }, Json);
+                    await _residentWorker.ExecuteAsync(request, progress.Report, cancellation);
+                    bool idle;
+                    lock (Gate) idle = _processingBatches == 0;
+                    if (idle) await ReleaseResidentCoreAsync(); // Standalone calls have no owning queue.
+                    return;
+                }
+                await ReleaseResidentCoreAsync();
+                if (prepared) throw new InvalidOperationException("Local model installation changed after setup; retry processing.");
+            }
+            catch
+            {
+                await ReleaseResidentCoreAsync();
+                throw;
+            }
+            finally { ResidentGate.Release(); }
+
+            // Setup owns the same locks; release request ownership before preparing assets.
             await AutomaticSetupGate.WaitAsync(cancellation);
             try
             {
@@ -177,27 +277,11 @@ public static class LocalWhisperRuntime
                 {
                     progress.Report(new("Downloading missing local runtime and models", 0));
                     await SetupAsync(settings, true, progress, cancellation);
-                    if (!IsReady(settings, settings.Device))
-                        throw new InvalidOperationException("Local model setup did not produce a ready installation.");
                 }
+                prepared = true;
             }
             finally { AutomaticSetupGate.Release(); }
-            // Use the resolved backend; another track's GPU allocation must not change this selection.
-            await TranscribeAsync(settings, audio, track, language, prefix, result, progress, cancellation);
-            return;
         }
-        await WorkerAsync(settings.Device, InstallWorker(), new
-        {
-            mode = "transcribe",
-            root = LocalWhisperSettings.Root,
-            settings = settings.WorkerSettings(),
-            engineKey = EngineKey(settings.Device),
-            audio,
-            track,
-            language,
-            outputPrefix = prefix,
-            result
-        }, progress.Report, cancellation);
     }
 
     private static string InstallWorker()
@@ -221,7 +305,7 @@ public static class LocalWhisperRuntime
         RunAsync(PythonPath(backend), ["-I", "-X", "pycache_prefix=" + Path.Combine(LocalWhisperSettings.Root, "cache", "python"), script],
             JsonSerializer.Serialize(request, Json), progress, token);
 
-    private static async Task RunAsync(string executable, string[] arguments, string? input, Action<LocalProgress>? progress, CancellationToken token)
+    private static ProcessStartInfo CreateStartInfo(string executable, string[] arguments)
     {
         var root = LocalWhisperSettings.Root;
         var start = new ProcessStartInfo(executable)
@@ -251,7 +335,12 @@ public static class LocalWhisperRuntime
         }
         start.Environment["UV_NO_PROGRESS"] = "1";
         start.Environment["PYTHONNOUSERSITE"] = "1";
-        using var process = new Process { StartInfo = start };
+        return start;
+    }
+
+    private static async Task RunAsync(string executable, string[] arguments, string? input, Action<LocalProgress>? progress, CancellationToken token)
+    {
+        using var process = new Process { StartInfo = CreateStartInfo(executable, arguments) };
         process.Start();
         var errorCode = "runtime_failed";
         var done = false;

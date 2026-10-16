@@ -5,6 +5,12 @@ using Recap.Recording;
 using Recap.Settings;
 using Recap.Transcription;
 
+if (args is ["--resident-fixture"])
+{
+    await ResidentWorkerTests.RunFixtureAsync();
+    return;
+}
+
 // Local regression checks: no microphone or cloud calls. API tests use loopback HTTP.
 var root = Path.Combine(Path.GetTempPath(), "Recap-tests-" + Guid.NewGuid());
 try
@@ -53,6 +59,9 @@ try
     Check(provider.RemoteCalls == 1 && provider.MicrophoneCalls == 2, "Reopening must not resubmit completed tracks");
     item.UpdateProcessing("Busy", true);
     Check(!item.CanOpen, "Processing meeting must remain locked");
+    Check(item.PrimaryActionText == "Cancel" && item.CanUsePrimaryAction, "Busy meeting must offer enabled Cancel");
+    item.RequestProcessingCancellation();
+    Check(item.PrimaryActionText == "Cancelling…" && !item.CanUsePrimaryAction, "Cancellation pending must prevent duplicate requests");
     item.UpdateProcessing(null, false);
     File.Delete(Path.Combine(folder, "raw-microphone-transcript.json"));
     Check(!item.CanOpen, "Deleting a result must lock the meeting again");
@@ -92,6 +101,7 @@ try
     Check(File.Exists(Path.Combine(folder, "remote.wav")) && File.Exists(Path.Combine(folder, "mixed.wav")), "Reprocessing must keep audio");
     Check(!File.Exists(Path.Combine(folder, "final-transcript.md")) && !File.Exists(Path.Combine(folder, "speaker-map.json")), "Reprocessing must invalidate dependent results");
     RunWindowSmokeTest(settings);
+    await ResidentWorkerTests.RunAsync();
     await LocalWhisperTests.RunAsync(root);
     await UpdaterTests.RunAsync(root);
     await AgentTests.RunAsync(root);
@@ -138,6 +148,13 @@ static void RunWindowSmokeTest(AppSettings settings)
             var row = window.Recordings.Single();
             row.UpdateProcessing("Recognition test", true, 50);
             window.UpdateLayout();
+            var busyAction = FindMeetingAction(window);
+            Check(busyAction is not null && busyAction.Content.ToString() == "Cancel" && busyAction.IsEnabled,
+                "Busy row must render an enabled Cancel action");
+            row.RequestProcessingCancellation();
+            window.UpdateLayout();
+            Check(busyAction!.Content.ToString() == "Cancelling…" && !busyAction.IsEnabled,
+                "Cancellation pending row must render disabled Cancelling action");
             var bar = FindProgressBar(window);
             Check(bar is not null && bar.Value == 50, "Meeting row must render and display live progress");
             var expandedWidth = window.ActualWidth;
@@ -164,7 +181,13 @@ static void RunWindowSmokeTest(AppSettings settings)
             row.SetManuallyQueued(false);
             row.UpdateProcessing("Test failure", false, failed: true);
             Check(action.Content.ToString() == "Retry", "Failed meeting must offer Retry");
+            row.UpdateProcessing("Processing cancelled", false);
+            row.MarkProcessingCancelled();
+            window.UpdateLayout();
+            Check(row.ProcessingCancelled && action.Content.ToString() == "Retry" && action.IsEnabled,
+                "Cancelled row must offer Retry");
             row.UpdateProcessing(null, false);
+            Check(!row.ProcessingCancelled && !row.IsCancellationPending, "Normal progress update must clear cancellation flags");
             if (Environment.GetEnvironmentVariable("RECAP_TEST_SCREENSHOT") is string screenshot)
             {
                 row.Metadata.Title = "Weekly planning";
@@ -341,7 +364,7 @@ static IEnumerable<System.Windows.DependencyObject> Descendants(System.Windows.D
 static System.Windows.Controls.Button? FindMeetingAction(System.Windows.DependencyObject root)
 {
     if (root is System.Windows.Controls.Button button && button.DataContext is RecordingListItem
-        && button.Content is string text && text is "Process" or "Open" or "Retry" or "Queued" or "Processing…") return button;
+        && button.Content is string text && text is "Process" or "Open" or "Retry" or "Queued" or "Cancel" or "Cancelling…") return button;
     for (var i = 0; i < System.Windows.Media.VisualTreeHelper.GetChildrenCount(root); i++)
     {
         var found = FindMeetingAction(System.Windows.Media.VisualTreeHelper.GetChild(root, i));

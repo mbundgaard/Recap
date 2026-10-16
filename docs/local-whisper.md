@@ -25,6 +25,7 @@ Recognition runs locally after automatic offline verification. It does not silen
 - Automatic GPU recommendations require NVIDIA compute capability 7.5 or newer, driver major version 570 or newer and sufficient free GPU memory. Runtime verification still checks CUDA support.
 - Advanced limits: batch size 1–32, CPU threads 1–64, GPU index 0–15, remote speaker count 0–30. CPU precision must be Auto, int8 or float32. Detection generally recommends half the logical cores, capped at 16, and a small batch.
 - Local model work is serialized through an exclusive processor lock. This limits concurrency, not total RAM/VRAM consumption.
+- During resident GPU processing, the transcription model stays loaded while alignment or diarization runs. Those auxiliary models are released after their stage, but the GPU must still fit the transcription model plus one auxiliary model. Smaller models or CPU processing may be needed if GPU memory runs out. This lifecycle has not been validated on real GPU workloads.
 - Processing does not automatically pause recording. There is no automatic recording/transcription pause preference. Recording and processing can compete for resources.
 
 ## Storage, prepared audio and output
@@ -53,4 +54,12 @@ The isolated faster-whisper benchmark environment (`tests/smoke-env`) and benchm
 
 ## Worker lifetime
 
-Workers and models load per operation. Persistent workers, model residency between operations and preload controls are **not implemented**; they are a separate next stage. Downloaded files on disk do not imply a model remains loaded in RAM or VRAM.
+A processing queue starts no worker until its first local recognition request. With matching model/settings, the worker process and transcription model are reused across tracks and meetings in that queue. If English and Danish select the same model, switching language keeps the transcription model and replaces only the language-specific aligner. CPU workers can retain alignment and diarization models; GPU workers release those auxiliary models after each stage.
+
+A model/configuration change disposes the old worker before starting a replacement. Queue completion, pause, cancellation or failure unloads the worker and its models. This behavior is automatic, with no model-residency setting or preload control. Downloaded model files remain on disk. Checkpoint reuse can avoid loading models altogether, so a running worker does not necessarily mean models occupy RAM/VRAM.
+
+## Cancel one meeting
+
+While a meeting is processing, its action is **Cancel**. Clicking it changes the disabled button to **Cancelling…** until the operation settles, then offers **Retry**. Preparation already in progress finishes safely before cancellation completes. Cancellation does not delete audio or completed results; retry can reuse completed work.
+
+A cancelled meeting is excluded from automatic retry for the current app session until explicitly retried. This is distinct from processing failure and does not pause recording. The API offers `POST /meetings/{id}/cancel` for the same active-meeting action; poll meeting state rather than treating the request response as proof that processing has stopped.
