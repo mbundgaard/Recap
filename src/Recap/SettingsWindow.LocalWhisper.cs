@@ -8,17 +8,13 @@ namespace Recap;
 
 public partial class SettingsWindow
 {
-    private Task _localWork = Task.CompletedTask;
-    private CancellationTokenSource? _localCancellation;
-    private bool _localClosing;
-    private string? _localFeedback;
+    private int _localBatchSize = 1;
     private readonly DispatcherTimer _localStatusTimer = new() { Interval = TimeSpan.FromSeconds(1) };
 
     private void InitializeLocalWhisper()
     {
         EnglishModelBox.ItemsSource = LocalWhisperSettings.Models;
         DanishModelBox.ItemsSource = LocalWhisperSettings.Models;
-        LocalFolderBox.Text = LocalWhisperSettings.Root;
         _localStatusTimer.Tick += (_, _) => RefreshLocalStatus();
         _localStatusTimer.Start();
     }
@@ -28,10 +24,9 @@ public partial class SettingsWindow
         DanishModelBox.SelectedValue = settings.DanishModel;
         LocalDeviceBox.SelectedValue = settings.Device;
         LocalComputeBox.SelectedValue = settings.ComputeType;
-        LocalBatchBox.Text = settings.BatchSize.ToString();
+        _localBatchSize = settings.BatchSize;
         LocalThreadsBox.Text = settings.CpuThreads.ToString();
         LocalGpuBox.Text = settings.GpuIndex.ToString();
-        LocalSpeakersBox.Text = settings.SpeakerCount.ToString();
         UpdateSpeechProviderPanels();
         RefreshLocalStatus();
     }
@@ -49,8 +44,8 @@ public partial class SettingsWindow
             DanishModel = DanishModelBox.SelectedValue as string ?? "medium",
             Device = LocalDeviceBox.SelectedValue as string ?? "",
             ComputeType = LocalComputeBox.SelectedValue as string ?? "",
-            BatchSize = Number(LocalBatchBox), CpuThreads = Number(LocalThreadsBox), GpuIndex = Number(LocalGpuBox),
-            SpeakerCount = Number(LocalSpeakersBox)
+            BatchSize = _localBatchSize, CpuThreads = Number(LocalThreadsBox), GpuIndex = Number(LocalGpuBox),
+            SpeakerCount = 0
         };
         settings.Validate();
         return settings;
@@ -58,15 +53,15 @@ public partial class SettingsWindow
     private void SpeechProvider_SelectionChanged(object sender, SelectionChangedEventArgs e) => UpdateSpeechProviderPanels();
     private void UpdateSpeechProviderPanels()
     {
-        if (LocalWhisperPanel is null || AzureSpeechPanel is null) return;
-        var local = SpeechProviderIdBox.SelectedValue as string == "local-whisper";
-        LocalWhisperPanel.Visibility = local ? Visibility.Visible : Visibility.Collapsed;
-        AzureSpeechPanel.Visibility = local ? Visibility.Collapsed : Visibility.Visible;
+        if (LocalWhisperPanel is null || AzureSpeechPanel is null || GrokSpeechPanel is null) return;
+        var provider = SpeechProviderIdBox.SelectedValue as string;
+        LocalWhisperPanel.Visibility = provider == "local-whisper" ? Visibility.Visible : Visibility.Collapsed;
+        AzureSpeechPanel.Visibility = provider == "azure-speech" ? Visibility.Visible : Visibility.Collapsed;
+        GrokSpeechPanel.Visibility = provider == "grok-speech" ? Visibility.Visible : Visibility.Collapsed;
         RefreshLocalStatus();
     }
     private void LocalModel_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        _localFeedback = null;
         RefreshLocalStatus();
     }
     private void RefreshLocalStatus()
@@ -76,80 +71,24 @@ public partial class SettingsWindow
         {
             var selected = ReadLocalFields();
             var status = LocalWhisperRuntime.Status(selected.ForLanguage("en-US"));
-            var readiness = LocalWhisperRuntime.StatusSelected(selected);
-            var ownBusy = !_localWork.IsCompleted;
             LocalSetupProgress.Value = status.Percent;
             LocalSetupProgress.IsIndeterminate = status.SetupRunning && status.Percent == 0;
-            LocalStatusText.Text = status.SetupRunning ? status.Message
-                : string.Join("\n", readiness.Select(item =>
-                    $"{(item.Language == "en-US" ? "English" : item.Language == "da-DK" ? "Danish" : item.Language)} ({item.Model}): CPU {(item.CpuReady ? "verified" : "setup required")}; GPU {(item.CudaReady ? "verified" : "setup required")}."))
-                    + "\n" + (_localFeedback ?? "Missing runtime and models download automatically when processing starts, then verify offline. First use can download several GB.");
-            LocalWhisperControls.IsEnabled = !ownBusy && !status.SetupRunning;
-            SpeechProviderIdBox.IsEnabled = !ownBusy;
-            SaveSettingsButton.IsEnabled = !ownBusy;
+            LocalSetupProgress.Visibility = status.SetupRunning ? Visibility.Visible : Visibility.Collapsed;
+            LocalStatusText.Text = status.SetupRunning ? status.Message : "";
+            LocalWhisperControls.IsEnabled = !status.SetupRunning;
             if (!LocalWhisperRuntime.Supported) LocalStatusText.Text = "Local Whisper currently requires Windows x64.";
         }
-        catch (ArgumentException) { LocalStatusText.Text = "Complete the local settings fields to check readiness."; }
+        catch (ArgumentException)
+        {
+            LocalSetupProgress.Visibility = Visibility.Collapsed;
+            LocalStatusText.Text = "Check the advanced settings values.";
+        }
+        LocalStatusText.Visibility = string.IsNullOrWhiteSpace(LocalStatusText.Text) ? Visibility.Collapsed : Visibility.Visible;
     }
 
-    private async Task LocalOperationAsync(Func<CancellationToken, Task> work, bool showCompletion = true)
+    protected override void OnClosing(CancelEventArgs e)
     {
-        if (!_localWork.IsCompleted) return;
-        _localCancellation?.Dispose();
-        _localCancellation = new CancellationTokenSource();
-        try
-        {
-            _localFeedback = null;
-            _localWork = work(_localCancellation.Token);
-            RefreshLocalStatus();
-            await _localWork;
-            _localFeedback = showCompletion ? "Operation completed. Save settings to apply your selections." : null;
-        }
-        catch (OperationCanceledException) { _localFeedback = "Detection cancelled."; }
-        catch (Exception ex)
-        {
-            _localFeedback = ex.Message;
-            if (!_localClosing) MessageBox.Show(this, ex.Message, "Local Whisper", MessageBoxButton.OK, MessageBoxImage.Warning);
-        }
-        finally { RefreshLocalStatus(); }
-    }
-
-    private async void DetectLocal_Click(object sender, RoutedEventArgs e)
-    {
-        LocalWhisperSettings selected;
-        try { selected = ReadLocalFields(); }
-        catch (ArgumentException ex) { MessageBox.Show(this, ex.Message, "Local settings"); return; }
-        await LocalOperationAsync(async token =>
-        {
-            var heavierModel = LocalWhisperSettings.Models
-                .Where(model => model.Id == selected.EnglishModel || model.Id == selected.DanishModel)
-                .OrderByDescending(model => Math.Max(model.SuggestedCpuGb, model.SuggestedGpuGb))
-                .First();
-            var language = heavierModel.Id == selected.DanishModel ? "da-DK" : "en-US";
-            var recommendation = HardwareDetection.Recommend(selected.ForLanguage(language), await HardwareDetection.DetectAsync(token));
-            token.ThrowIfCancellationRequested();
-            selected.Device = recommendation.Settings.Device;
-            selected.ComputeType = recommendation.Settings.ComputeType;
-            selected.CpuThreads = recommendation.Settings.CpuThreads;
-            selected.BatchSize = recommendation.Settings.BatchSize;
-            selected.GpuIndex = recommendation.Settings.GpuIndex;
-            LoadLocalFields(selected);
-        }, showCompletion: false);
-    }
-    protected override async void OnClosing(CancelEventArgs e)
-    {
-        if (!_localWork.IsCompleted)
-        {
-            e.Cancel = true;
-            if (_localClosing) return;
-            _localClosing = true;
-            _localCancellation?.Cancel();
-            try { await _localWork; } catch { }
-            Close();
-            return;
-        }
         _localStatusTimer.Stop();
-        _localCancellation?.Dispose();
         base.OnClosing(e);
     }
 }

@@ -17,6 +17,7 @@ public static class AgentSettings
     {
         var node = JsonSerializer.SerializeToNode(settings, Options)!.AsObject();
         Redact(node["azureSpeech"]!.AsObject(), "subscriptionKey");
+        Redact(node["grokSpeech"]!.AsObject(), "apiKey");
         Redact(node["openAiCompatible"]!.AsObject(), "apiKey");
         return node;
     }
@@ -33,12 +34,12 @@ public static class AgentSettings
         var node = JsonSerializer.SerializeToNode(settings, Options)!.AsObject();
         Merge(node, JsonNode.Parse(patch.GetRawText())!.AsObject());
         var result = node.Deserialize<AppSettings>(Options)!;
-        if (result.SpeechProviderId is not ("azure-speech" or "local-whisper") || result.LlmProviderId != "openai-compatible")
+        if (result.SpeechProviderId is not ("azure-speech" or "local-whisper" or "grok-speech") || result.LlmProviderId != "openai-compatible")
             throw new AgentException(400, "Unknown provider ID.");
         if (patch.TryGetProperty("recordingsFolder", out _) && !System.IO.Path.IsPathFullyQualified(Environment.ExpandEnvironmentVariables(result.RecordingsFolder))
             || patch.TryGetProperty("logsFolder", out _) && !System.IO.Path.IsPathFullyQualified(Environment.ExpandEnvironmentVariables(result.LogsFolder)))
             throw new AgentException(400, "Storage paths must be absolute.");
-        try { result.LocalWhisper.Validate(); }
+        try { result.LocalWhisper.Validate(); result.GrokSpeech.Validate(); }
         catch (ArgumentException ex) { throw new AgentException(400, ex.Message); }
         return result;
     }

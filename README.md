@@ -44,7 +44,8 @@ Recognition and AI output can be wrong. Check important details against the reco
 - Hide the meeting list for a compact recording window.
 - Choose where recordings and logs are stored.
 - Keep the original audio after preparation if you want it.
-- Enable update checks and install updates when you're ready. Downloads are verified
+- Check for updates on startup and every four hours, download them in the background,
+  and restart when you're ready. Downloads are verified
   against a signed manifest, and the previous executable is restored if an update
   fails to start. Updates don't interrupt recording or processing.
 
@@ -67,8 +68,10 @@ See the [agent API reference](src/Recap/Agent/skill.md) for commands and safety 
 
 Local Whisper is available in the development build; it has not yet been published in a release.
 
-Choose **Azure Speech** or **Local Whisper** behind the replaceable `ITranscriptionProvider`
-interface. Local Whisper defaults to Base for English and Medium for Danish, with separate
+Choose **Azure Speech**, **Local Whisper**, or **Grok Speech** behind the replaceable `ITranscriptionProvider`
+interface. Grok Speech is a development-only integration for English/Danish transcription with
+word timestamps and speaker labels. It uploads audio to xAI, then creates Markdown locally;
+real-service accuracy and latency have not yet been tested. See [Grok Speech](docs/grok-speech.md). Local Whisper defaults to Base for English and Medium for Danish, with separate
 model choices for each language. Missing runtime and model files download automatically
 when processing starts. First use can download several GB; offline verification then
 runs automatically before local recognition. Community-1 speaker models come from a
@@ -91,7 +94,7 @@ requires no speech-provider credentials.
 ## Your data
 
 Recordings and app data are stored locally. Automatic processing is off by default.
-Azure Speech processing sends audio to Azure. Cloud transcript generation sends recognized
+Azure Speech processing sends audio to Azure. Grok Speech sends audio to xAI; review its retention and region policies before processing confidential meetings. Cloud transcript generation sends recognized
 text to the configured LLM provider. Local Whisper downloads its runtime and models as
 needed, then recognizes prepared audio and creates Markdown locally without uploading
 recordings or calling an LLM.
@@ -110,7 +113,9 @@ See [security and privacy](SECURITY.md) for more detail.
 4. Stop when you're done, then click **Process** or let automatic processing handle it.
 5. With Azure, name detected speakers and create the transcript. Local Whisper creates it automatically; naming is optional. Copy or export the result.
 
-Update checks are optional and can be enabled under **Settings - General - Updates**.
+Automatic checks and downloads can be controlled under **Settings - General - Updates**.
+They are enabled for new settings; existing opt-outs are preserved. Installation always
+waits for your confirmation.
 The executable is not Authenticode-signed, so Windows may show an unknown-publisher
 warning. Download it from this repository's releases rather than an unofficial mirror.
 

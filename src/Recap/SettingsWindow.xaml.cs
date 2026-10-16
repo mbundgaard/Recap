@@ -65,6 +65,7 @@ public partial class SettingsWindow : Window
         AzureSpeechResourceNameBox.Text = _settings.AzureSpeech.ResourceName;
         AzureSpeechEndpointBox.Text = _settings.AzureSpeech.Endpoint;
         AzureSpeechKeyBox.Password = _settings.AzureSpeech.SubscriptionKey;
+        GrokSpeechApiKeyBox.Password = _settings.GrokSpeech.ApiKey;
 
         OpenAiEndpointBox.Text = _settings.OpenAiCompatible.Endpoint;
         OpenAiKeyBox.Password = _settings.OpenAiCompatible.ApiKey;
@@ -84,6 +85,12 @@ public partial class SettingsWindow : Window
 
         Recap.LocalWhisper.LocalWhisperSettings local;
         try { local = ReadLocalFields(); }
+        catch (ArgumentException) when (speechProviderId != "local-whisper")
+        {
+            // Invalid hidden fields must not prevent saving a cloud provider.
+            // Keep the last saved local configuration until those edits are valid.
+            local = _settings.LocalWhisper;
+        }
         catch (ArgumentException ex) { MessageBox.Show(this, ex.Message, "Local settings", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
         _settings.LocalWhisper = local;
         _settings.SpeechRecognitionPaused = AutomaticProcessingBox.IsChecked != true;
@@ -101,6 +108,7 @@ public partial class SettingsWindow : Window
         _settings.AzureSpeech.ResourceName = AzureSpeechResourceNameBox.Text.Trim();
         _settings.AzureSpeech.Endpoint = AzureSpeechEndpointBox.Text.Trim();
         _settings.AzureSpeech.SubscriptionKey = AzureSpeechKeyBox.Password;
+        _settings.GrokSpeech.ApiKey = GrokSpeechApiKeyBox.Password;
 
         _settings.OpenAiCompatible.Endpoint = OpenAiEndpointBox.Text.Trim();
         _settings.OpenAiCompatible.ApiKey = OpenAiKeyBox.Password;

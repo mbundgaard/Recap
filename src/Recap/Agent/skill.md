@@ -72,10 +72,10 @@ Recording, queued and busy meetings reject conflicting writes with HTTP 409.
   sample text, and start/end seconds. Recognition must be complete.
 - `PUT /meetings/{id}/speakers`: `{"names":{"Speaker 1":"Alex","Speaker 2":"Sam"}}`.
   Supply every returned source label. Azure transcript generation requires real display names;
-  Local Whisper also accepts the original speaker labels, with renaming optional.
+  Local Whisper and Grok Speech also accept the original speaker labels, with renaming optional.
   This saves/confirms the names and rebuilds local Markdown for Local Whisper meetings. For a meeting without detected speakers use `{"names":{}}`.
 - `POST /meetings/{id}/transcript`: no fields. Returns a job. Azure meetings use LLM transcript
-  generation and require names for detected speakers. Local Whisper meetings produce Markdown
+  generation and require names for detected speakers. Local Whisper and Grok Speech meetings produce Markdown
   directly without an LLM; this is also done automatically after recognition. An existing
   final transcript is not overwritten by this endpoint.
 - `GET /meetings/{id}/transcript`: the Markdown file. Save this HTTP response to export it.
@@ -84,7 +84,8 @@ Recording, queued and busy meetings reject conflicting writes with HTTP 409.
 - `GET /meetings/{id}/files/{file}`: downloads a known meeting file, with HTTP range
   support for WAV playback. For example, `/meetings/{id}/files/remote`.
   `POST /meetings/{id}/file` with `{"file":"remote"}` is also available for whole-file downloads. Allowed file values: remote, microphone, mixed, raw-remote,
-  raw-microphone, raw-remote-transcript, raw-microphone-transcript, metadata, speakers,
+  raw-microphone, raw-remote-transcript, raw-microphone-transcript,
+  provider-remote-response, provider-microphone-response, metadata, speakers,
   transcript, merged-transcript, summary. Missing files return 404. This does not create
   a summary; summary generation is not currently offered by the UI.
 
@@ -114,7 +115,7 @@ Recording, queued and busy meetings reject conflicting writes with HTTP 409.
 - `PATCH /settings`: partial settings object, using the camelCase fields from GET settings.
   Omitted values, including credentials, remain unchanged. Fields include userName,
   recordingsFolder, logsFolder, speechRecognitionPaused, checkForUpdatesOnStartup,
-  speechProviderId (`azure-speech` or `local-whisper`), llmProviderId (`openai-compatible`), audioDevices,
+  speechProviderId (`azure-speech`, `local-whisper`, or `grok-speech`), llmProviderId (`openai-compatible`), audioDevices,
   recordingProcessing, azureSpeech, localWhisper, and openAiCompatible.
   `localWhisper.englishModel` defaults to `base`; `danishModel` defaults to `medium`.
   Both accept tiny/base/small/medium/large-v3. The meeting's en-US/da-DK language selects
@@ -123,7 +124,12 @@ Recording, queued and busy meetings reject conflicting writes with HTTP 409.
   (0 estimates). Diarization is always enabled, not a writable boolean. There is no local
   model-download token setting. Changing a selection alone does not download files;
   processing automatically downloads any required missing assets.
-  Credential inputs are `azureSpeech.subscriptionKey` and `openAiCompatible.apiKey`.
+  Grok settings are `grokSpeech.apiKey` and `grokSpeech.model` (only `grok-voice-transcribe-2.0`).
+  Grok uploads saved tracks to xAI's STT service with billable usage; obtain processing consent first.
+  Tracks run sequentially, remote speaker labels and word timestamps come from the service,
+  and Markdown is assembled locally without an LLM. Cancelling the HTTP request cannot guarantee
+  cancellation of server work or charges after upload. No automatic cloud fallback.
+  Credential inputs are `azureSpeech.subscriptionKey`, `grokSpeech.apiKey`, and `openAiCompatible.apiKey`.
   `hasCredential` is read-only; do not send it back. An empty credential string clears it.
   Device IDs are `audioDevices.remoteDeviceId` and `microphoneDeviceId`; null uses defaults.
   `recordingProcessing.preserveRawFiles` controls raw retention. Device changes apply to
@@ -171,8 +177,8 @@ Partial results from another provider/model require confirmed meeting reprocessi
 
 ## Updates and exit
 
-- `POST /updates/check`: returns a job; poll jobs and state for a verified available update.
-- `POST /updates/install`: `{"confirm":true}`. Requires an available verified update and
+- `POST /updates/check`: returns a job that checks and downloads a newer signed release to staging. Poll jobs and state (`downloading`, `ready`, `readyVersion`); this never installs or restarts.
+- `POST /updates/install`: `{"confirm":true}`. Requires a downloaded, verified ready update and
   idle recording/processing with meeting windows closed. Returns a job, then the app exits
   and restarts. The old token/port expires. Ask the owner to copy a fresh AI prompt afterward.
   In-app installation is supported only in published Windows x64 single-file builds.

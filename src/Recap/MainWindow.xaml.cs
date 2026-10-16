@@ -28,6 +28,9 @@ public partial class MainWindow : Window
     private bool _isPausingProcessing;
     private bool _meetingsHidden;
     private double _expandedWidth;
+    private double _expandedHeight;
+    private double _expandedMinWidth;
+    private double _expandedMinHeight;
     private WindowState _expandedWindowState;
     private RecordingSession? _session;
     private bool _isClosingAfterStop;
@@ -70,6 +73,9 @@ public partial class MainWindow : Window
         {
             _expandedWindowState = WindowState;
             _expandedWidth = WindowState == WindowState.Normal ? ActualWidth : RestoreBounds.Width;
+            _expandedHeight = WindowState == WindowState.Normal ? ActualHeight : RestoreBounds.Height;
+            _expandedMinWidth = MinWidth;
+            _expandedMinHeight = MinHeight;
             var compactWidth = 360 + ActualWidth - MainLayout.ActualWidth;
             WindowState = WindowState.Normal;
             MeetingsPanel.Visibility = Visibility.Collapsed;
@@ -77,7 +83,9 @@ public partial class MainWindow : Window
             MeetingsColumn.Width = new GridLength(0);
             RecorderColumn.Width = new GridLength(1, GridUnitType.Star);
             MinWidth = 400;
+            MinHeight = 650;
             Width = Math.Max(MinWidth, compactWidth);
+            Height = MinHeight;
         }
         else
         {
@@ -85,8 +93,10 @@ public partial class MainWindow : Window
             RecorderColumn.Width = new GridLength(360);
             MeetingsGapColumn.Width = new GridLength(20);
             MeetingsColumn.Width = new GridLength(1, GridUnitType.Star);
-            MinWidth = 760;
+            MinWidth = Math.Max(760, _expandedMinWidth);
+            MinHeight = _expandedMinHeight;
             Width = Math.Max(MinWidth, _expandedWidth);
+            Height = Math.Max(MinHeight, _expandedHeight);
             WindowState = _expandedWindowState;
         }
         var label = _meetingsHidden ? "Show meetings" : "Hide meetings";
@@ -112,6 +122,8 @@ public partial class MainWindow : Window
     {
         if (_isUpdating || _session is not null || _recordingStarted is not null)
             throw new InvalidOperationException("Recording cannot start while the app is busy.");
+        _recordingMetadataTransition = true;
+        RefreshActiveRecordingFields();
         try
         {
             if (RecordingLanguageBox.SelectedValue is not string language || (language != "en-US" && language != "da-DK"))
@@ -120,9 +132,10 @@ public partial class MainWindow : Window
             _session = new RecordingSession(_library, SelectedRemoteDevice, SelectedMicrophoneDevice);
             _session.LevelsChanged += Session_LevelsChanged;
             _session.Start(language);
-            RecordingLanguageBox.IsEnabled = false;
             AppLogger.Info($"Recording started: {_session.Folder}");
             _recordingStarted = DateTime.Now;
+            _recordingMetadataTransition = false;
+            RefreshActiveRecordingFields();
 
             StatusText.Text = "● Recording";
             StatusText.Foreground = System.Windows.Media.Brushes.IndianRed;
@@ -149,7 +162,9 @@ public partial class MainWindow : Window
             catch { /* Preserve the original startup error. */ }
             _session?.Dispose();
             _session = null;
-            RecordingLanguageBox.IsEnabled = true;
+            _recordingStarted = null;
+            _recordingMetadataTransition = false;
+            RefreshActiveRecordingFields();
             AppLogger.Error(ex, "Could not start recording.");
             if (!reportErrors) throw;
             MessageBox.Show(this, ex.Message, "Could not start recording", MessageBoxButton.OK, MessageBoxImage.Error);
@@ -171,7 +186,12 @@ public partial class MainWindow : Window
             return;
         }
 
+        // Commit a pending editor before handing the live metadata to the stop task.
+        CommitActiveRecordingTitle();
+        if (!ReferenceEquals(_session, session)) return;
+        _recordingMetadataTransition = true;
         _session = null;
+        RefreshActiveRecordingFields();
         _timer.Stop();
         PauseRecordingButton.Visibility = Visibility.Collapsed;
         RecordButton.IsEnabled = false;
@@ -214,7 +234,8 @@ public partial class MainWindow : Window
             _recordingStarted = null;
             RecordButton.Content = "Start recording";
             RecordButton.IsEnabled = true;
-            RecordingLanguageBox.IsEnabled = true;
+            _recordingMetadataTransition = false;
+            RefreshActiveRecordingFields();
         }
     }
 
@@ -287,6 +308,62 @@ public partial class MainWindow : Window
         MicrophoneMeter.Value = Math.Min(100, _lastMicrophoneLevel * 250);
     }
 
+    private bool CanDeleteMeeting(RecordingListItem item) =>
+        !_recordingMetadataTransition && !item.IsProcessing && !item.IsManuallyQueued
+        && !MeetingWindowBusy(item) && _recordingStopTask.IsCompleted && !_waitingForRecordingStop
+        && !(_session is null && _recordingStarted is not null)
+        && (_session is null || !string.Equals(_session.Folder, item.Folder, StringComparison.OrdinalIgnoreCase))
+        && !_agentClosing && !_isUpdating;
+
+    private void DeleteMeeting_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: RecordingListItem selected }) return;
+        var item = Recordings.FirstOrDefault(x => string.Equals(x.Folder, selected.Folder, StringComparison.OrdinalIgnoreCase));
+        if (item is null || !CanDeleteMeeting(item) || _agentMutationMeetings.Contains(item.Folder)) return;
+        var allowInterruptedRecording = item.Metadata.Status == "recording";
+        var interruptedWarning = allowInterruptedRecording
+            ? "This meeting is still marked as recording, but this app is not recording it. Confirm that no other Recap instance is recording this meeting before continuing. Audio files that are in use will block deletion.\n\n"
+            : "";
+        var result = MessageBox.Show(this,
+            $"Permanently delete ‘{item.Title}’?\n\n{interruptedWarning}All audio, transcripts, speaker names and meeting details will be removed. This cannot be undone.",
+            "Delete meeting", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
+        if (result != MessageBoxResult.Yes) return;
+
+        // The modal prompt pumps the dispatcher: the meeting may now be queued,
+        // processing, replaced by a refresh, or deleted through another surface.
+        item = Recordings.FirstOrDefault(x => string.Equals(x.Folder, selected.Folder, StringComparison.OrdinalIgnoreCase));
+        if (item is null || !CanDeleteMeeting(item) || !_agentMutationMeetings.Add(item.Folder)) return;
+        try
+        {
+            if (!allowInterruptedRecording) EnsureMeetingIdle(item);
+            // Closing details refreshes the queue. Keep this folder excluded until
+            // deletion finishes, and never delete if a close handler refused closure.
+            if (_meetingWindows.TryGetValue(item.Folder, out var detail))
+            {
+                detail.Close();
+                if (_meetingWindows.ContainsKey(item.Folder))
+                    throw new InvalidOperationException("The meeting window could not close.");
+            }
+            if (!CanDeleteMeeting(item)) return;
+            if (!allowInterruptedRecording) EnsureMeetingIdle(item);
+            _library.Delete(item, allowInterruptedRecording);
+            foreach (var listed in Recordings.Where(x => string.Equals(x.Folder, item.Folder, StringComparison.OrdinalIgnoreCase)).ToArray())
+                Recordings.Remove(listed);
+            AppLogger.Info($"Meeting deleted: {item.Folder}");
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error(ex, "Could not delete meeting.");
+            MessageBox.Show(this, "The meeting could not be completely deleted. Close any other app using its audio and try again.",
+                "Delete failed", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            _agentMutationMeetings.Remove(item.Folder);
+            RefreshRecordings();
+        }
+    }
+
     private void RefreshRecordings()
     {
         var existing = Recordings.ToDictionary(x => x.Folder, StringComparer.OrdinalIgnoreCase);
@@ -353,7 +430,7 @@ public partial class MainWindow : Window
             _startupRendered = true;
             StartPendingProcessing();
             if (Application.Current is App) _ = StartAgentServerAsync();
-            if (_settings.CheckForUpdatesOnStartup) _ = CheckForUpdatesAsync(false);
+            ConfigureUpdatePolling();
         }));
     }
 
@@ -503,6 +580,7 @@ public partial class MainWindow : Window
         {
             _settings.SpeechRecognitionPaused = dialog.SpeechRecognitionPaused;
             _settings.CheckForUpdatesOnStartup = dialog.CheckForUpdatesOnStartup;
+            ConfigureUpdatePolling();
             RefreshAudioDevices();
             await ApplyAutomaticProcessingAsync(wasPaused);
             UpdatePausedMeetings();
@@ -587,7 +665,7 @@ public partial class MainWindow : Window
             e.Cancel = true;
             if (_cancelingUpdateShutdown) return;
             _cancelingUpdateShutdown = true;
-            _updateCancellation.Cancel();
+            CancelBackgroundUpdates();
             _processingCancellation.Cancel();
             await _installTask;
             Close();
@@ -622,7 +700,7 @@ public partial class MainWindow : Window
             return;
         }
         _processingCancellation.Cancel();
-        _updateCancellation.Cancel();
+        CancelBackgroundUpdates();
         _agentClosing = true;
         foreach (var window in _meetingWindows.Values.ToArray()) window.Close();
         _ = _agentServer?.DisposeAsync();

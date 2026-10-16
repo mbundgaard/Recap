@@ -11,11 +11,24 @@ if (args is ["--resident-fixture"])
     return;
 }
 
+if (args is ["--local-diagnostics-tests"])
+{
+    var diagnosticsRoot = Path.Combine(Path.GetTempPath(), "Recap-diagnostics-tests-" + Guid.NewGuid());
+    try
+    {
+        LocalDiagnosticsTests.Run(diagnosticsRoot);
+        await ResidentWorkerTests.RunAsync(diagnosticsRoot);
+    }
+    finally { if (Directory.Exists(diagnosticsRoot)) Directory.Delete(diagnosticsRoot, true); }
+    return;
+}
+
 // Local regression checks: no microphone or cloud calls. API tests use loopback HTTP.
 var root = Path.Combine(Path.GetTempPath(), "Recap-tests-" + Guid.NewGuid());
 try
 {
     var settings = AppSettingsStore.CreateDefaultSettings();
+    settings.CheckForUpdatesOnStartup = false; // Regression fixtures must never poll the public release feed.
     settings.RecordingsFolder = root;
     settings.RecordingProcessing.PreserveRawFiles = true;
     var library = new RecordingLibrary(root);
@@ -101,8 +114,10 @@ try
     Check(File.Exists(Path.Combine(folder, "remote.wav")) && File.Exists(Path.Combine(folder, "mixed.wav")), "Reprocessing must keep audio");
     Check(!File.Exists(Path.Combine(folder, "final-transcript.md")) && !File.Exists(Path.Combine(folder, "speaker-map.json")), "Reprocessing must invalidate dependent results");
     RunWindowSmokeTest(settings);
-    await ResidentWorkerTests.RunAsync();
+    LocalDiagnosticsTests.Run(root);
+    await ResidentWorkerTests.RunAsync(root);
     await LocalWhisperTests.RunAsync(root);
+    await GrokSpeechTests.RunAsync(root);
     await UpdaterTests.RunAsync(root);
     await AgentTests.RunAsync(root);
     Console.WriteLine("PASS: parallel tracks, progress, partial failure/retry, disk readiness, active pause/resume, saved pause preference, meeting-row rendering.");
@@ -217,6 +232,12 @@ static void RunWindowSmokeTest(AppSettings settings)
             processingTask.SetValue(window, Task.CompletedTask);
             CheckSettingsWindow(settings);
             CheckDetailWindow(window.Recordings.Single(), settings);
+            OverviewDeleteTests.Check(window);
+            TitleEditingTests.Check(window);
+            RecorderLayoutTests.Check(window);
+            MeetingsScrollTests.Check(window);
+            AutoUpdateTests.Check(window);
+            SpeakerPaginationTests.Check(settings, Path.Combine(settings.RecordingsFolder, "pagination-tests"));
             AgentTests.CheckController(window, settings);
         }
         catch (Exception ex) { failure = ex; }
@@ -246,7 +267,10 @@ static void CheckSettingsWindow(AppSettings settings)
             Check(((System.Windows.FrameworkElement)dialog.FindName(name)).Visibility == System.Windows.Visibility.Visible,
                 "General must include profile, storage and devices");
         var updates = (System.Windows.Controls.CheckBox)dialog.FindName("CheckForUpdatesBox");
-        Check(updates.IsChecked == false && !settings.CheckForUpdatesOnStartup, "Network update checks must be opt-in");
+        Check(updates.IsChecked == settings.CheckForUpdatesOnStartup, "Automatic updates must reflect the saved preference");
+        Check(new AppSettings().CheckForUpdatesOnStartup, "New settings enable automatic updates");
+        Check(!System.Text.Json.JsonSerializer.Deserialize<AppSettings>("{\"CheckForUpdatesOnStartup\":false}")!.CheckForUpdatesOnStartup,
+            "Existing saved update opt-outs must be preserved");
         var automatic = (System.Windows.Controls.CheckBox)dialog.FindName("AutomaticProcessingBox");
         Check(automatic.IsChecked == !settings.SpeechRecognitionPaused, "Automatic processing must reflect the saved preference");
         navigation.SelectedIndex = 1;
@@ -259,7 +283,15 @@ static void CheckSettingsWindow(AppSettings settings)
         var provider = (System.Windows.Controls.ComboBox)dialog.FindName("SpeechProviderIdBox");
         var localPanel = (System.Windows.FrameworkElement)dialog.FindName("LocalWhisperPanel");
         var azurePanel = (System.Windows.FrameworkElement)dialog.FindName("AzureSpeechPanel");
+        var grokPanel = (System.Windows.FrameworkElement)dialog.FindName("GrokSpeechPanel");
+        provider.SelectedValue = "grok-speech";
+        Check(grokPanel.Visibility == System.Windows.Visibility.Visible && azurePanel.Visibility == System.Windows.Visibility.Collapsed
+            && localPanel.Visibility == System.Windows.Visibility.Collapsed, "Grok selection must show only Grok settings");
+        var grokKey = (System.Windows.Controls.PasswordBox)dialog.FindName("GrokSpeechApiKeyBox");
+        grokKey.Password = "mock-unsaved-key";
+        Check(settings.GrokSpeech.ApiKey == "", "Unsaved Grok key must not mutate supplied settings");
         provider.SelectedValue = "azure-speech";
+        Check(grokPanel.Visibility == System.Windows.Visibility.Collapsed, "Azure selection must hide Grok settings");
         Check(azurePanel.Visibility == System.Windows.Visibility.Visible && localPanel.Visibility == System.Windows.Visibility.Collapsed,
             "Azure selection must show only Azure settings");
         provider.SelectedValue = "local-whisper";
@@ -295,7 +327,8 @@ static void CheckSettingsWindow(AppSettings settings)
 
 static void CheckDetailWindow(RecordingListItem item, AppSettings settings)
 {
-    File.WriteAllText(Path.Combine(item.Folder, "raw-remote-transcript.json"), "[]");
+    File.WriteAllText(Path.Combine(item.Folder, "raw-remote-transcript.json"),
+        System.Text.Json.JsonSerializer.Serialize(new[] { new TranscriptSegment(TimeSpan.Zero, TimeSpan.FromSeconds(1), "Speaker 1", "Test speech", "remote") }));
     File.WriteAllText(Path.Combine(item.Folder, "raw-microphone-transcript.json"), "[]");
     File.WriteAllText(Path.Combine(item.Folder, "speaker-map.json"),
         "{\"Speakers\":[{\"SourceLabel\":\"Speaker 1\",\"DisplayName\":\"Alex\"}]}");

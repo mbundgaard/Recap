@@ -2,10 +2,12 @@
 
 ## User behaviour
 
-- Update checks are off by default. Enable them in Settings or use Save and check for updates.
-- Checks read GitHub's latest published stable release. No token, meeting data or provider credentials are sent.
-- A visible update action asks for confirmation. No download/installation runs while recording, finishing a recording, processing meetings, or viewing meeting details.
-- During a confirmed download, new recording/processing work is blocked. Closing the window cancels the download.
+- Automatic update checks and downloads are enabled for new settings. Existing saved opt-outs are preserved; enable automatic updates in Settings or check manually.
+- Recap checks on startup and every four hours in the background, reading GitHub's latest published stable release. No token, meeting data or provider credentials are sent.
+- A newer signed release downloads automatically to staging without blocking recording or processing. The indicator changes from new-version/download status to **Restart to update** only after verification.
+- Restart and installation require explicit confirmation. They are blocked while recording, finishing a recording, processing meetings, or viewing meeting details. No automatic restart occurs.
+- Closing Recap cancels background checks/downloads. Disabling automatic updates cancels automatic polling and its in-flight work. Offline/check/download failures do not interrupt meetings; later checks can retry.
+- The stored/API setting remains named `CheckForUpdatesOnStartup` for compatibility; it now controls startup checks, four-hour polling and automatic downloads.
 - Only Windows x64 single-file releases can install updates in place. The executable directory must be writable; no administrator privileges are requested.
 - Upgrade older releases manually once to obtain the updater. Drafts, prereleases, same/older versions and unsigned manifests are not eligible.
 

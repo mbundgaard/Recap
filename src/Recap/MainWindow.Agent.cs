@@ -32,7 +32,7 @@ public partial class MainWindow
             if (_agentClosing) { await server.DisposeAsync(); return; }
             AgentButton.IsEnabled = true;
             AgentButton.ToolTip = "Copy private agent instructions (URL and access token)";
-            _agentCopyFeedback.Tick += (_, _) => { AgentButton.Content = "AI"; _agentCopyFeedback.Stop(); };
+            _agentCopyFeedback.Tick += (_, _) => { AgentButton.Content = "</>"; _agentCopyFeedback.Stop(); };
         }
         catch (Exception ex)
         {
@@ -126,8 +126,10 @@ public partial class MainWindow
         processing = !_processingTask.IsCompleted,
         compact = _meetingsHidden, visible = IsVisible,
         openMeetings = _meetingWindows.Where(x => x.Value.IsVisible).Select(x => Path.GetFileName(x.Key)).ToArray(),
-        update = new { supported = UpdateTrust.SupportsInstallation, checking = _isCheckingUpdates, installing = _isUpdating,
-            available = _availableUpdate?.Manifest.Version, current = UpdateTrust.CurrentVersion.ToString() },
+        update = new { supported = UpdateTrust.SupportsInstallation, checking = _isCheckingUpdates,
+            downloading = _isDownloadingUpdate, ready = _readyUpdateDirectory is not null,
+            installing = _isUpdating, available = _availableUpdate?.Manifest.Version,
+            readyVersion = _readyUpdateVersion, current = UpdateTrust.CurrentVersion.ToString() },
         recordingsFolder = _library.RootFolder,
         jobs = _agentJobs.ToArray()
     };
@@ -176,6 +178,7 @@ public partial class MainWindow
                 StartRecording(false);
                 _session!.Metadata.Title = title;
                 _library.SaveMetadata(_session.Folder, _session.Metadata);
+                RefreshActiveRecordingFields();
                 return AgentState();
             case "recording.pause": args.Only(); SetRecordingPaused(true); return AgentState();
             case "recording.resume": args.Only(); SetRecordingPaused(false); return AgentState();
@@ -279,6 +282,7 @@ public partial class MainWindow
                 var previousPaused = _settings.SpeechRecognitionPaused;
                 var restartRequired = updated.RecordingsFolder != _settings.RecordingsFolder || updated.LogsFolder != _settings.LogsFolder;
                 _settingsStore.Save(updated); AgentSettings.Copy(updated, _settings);
+                ConfigureUpdatePolling();
                 RefreshAudioDevices(); await ApplyAutomaticProcessingAsync(previousPaused);
                 return new { settings = AgentSettings.Redacted(_settings), restartRequired };
             case "settings.file": args.Only(); _settingsStore.OpenSettingsFile(); return new { opened = true };
@@ -302,22 +306,14 @@ public partial class MainWindow
                 if (!UpdateTrust.SupportsInstallation) throw new AgentException(409, "This build does not support in-app installation.");
                 return StartAgentJob("updates.check", null, async () =>
                 {
-                    if (_isCheckingUpdates) throw new AgentException(409, "An update check is already running.");
-                    _isCheckingUpdates = true;
-                    try
-                    {
-                        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(_updateCancellation.Token);
-                        timeout.CancelAfter(TimeSpan.FromSeconds(30));
-                        _availableUpdate = await _updates.CheckAsync(timeout.Token);
-                        UpdateButton.Visibility = _availableUpdate is null ? Visibility.Collapsed : Visibility.Visible;
-                        UpdateButton.Content = _availableUpdate is null ? "Updates" : $"Update to {_availableUpdate.Manifest.Version}";
-                    }
-                    finally { _isCheckingUpdates = false; }
+                    if (_isCheckingUpdates || _isDownloadingUpdate)
+                        throw new AgentException(409, "An update check or download is already running.");
+                    await CheckAndDownloadUpdateAsync();
                 });
             case "updates.install":
                 args.Only("confirm"); args.Confirm();
                 foreach (var hidden in _meetingWindows.Values.Where(x => !x.IsVisible && !x.IsBusy).ToArray()) hidden.Close();
-                if (WorkPreventsUpdate || _availableUpdate is null) throw new AgentException(409, "Check for an update first; stop recording/processing and close meeting windows before installing.");
+                if (WorkPreventsUpdate || _readyUpdateDirectory is null) throw new AgentException(409, "Wait for a verified update to finish downloading; stop recording/processing and close meeting windows before installing.");
                 return StartAgentJob("updates.install", null, async () => { _installTask = InstallAvailableUpdateAsync(true); await _installTask; });
             case "local-whisper.status":
                 args.Only();
@@ -418,6 +414,7 @@ public partial class MainWindow
             "raw-microphone" => item.Metadata.Files.RawMicrophone, "transcript" => "final-transcript.md",
             "metadata" => "metadata.json", "speakers" => "speaker-map.json", "summary" => "summary.md",
             "raw-remote-transcript" => "raw-remote-transcript.json", "raw-microphone-transcript" => "raw-microphone-transcript.json",
+            "provider-remote-response" => "provider-remote-response.json", "provider-microphone-response" => "provider-microphone-response.json",
             "merged-transcript" => "merged-transcript.md", _ => throw new AgentException(400, "Unknown meeting file.")
         };
         if (string.IsNullOrEmpty(name) || !File.Exists(Path.Combine(item.Folder, name))) throw new AgentException(404, "Meeting file is not available.");

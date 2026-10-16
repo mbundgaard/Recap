@@ -16,6 +16,27 @@ spec.loader.exec_module(worker)
 
 
 class WorkerTests(unittest.TestCase):
+    def test_alignment_always_uses_cpu(self):
+        tree = ast.parse(source.read_text(encoding='utf-8'))
+        run = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == 'run')
+        assignments = [node for node in ast.walk(run) if isinstance(node, ast.Assign)
+                       and any(isinstance(target, ast.Name) and target.id == 'alignment_device' for target in node.targets)]
+        self.assertEqual(len(assignments), 1)
+        self.assertEqual(ast.literal_eval(assignments[0].value), 'cpu')
+        checked = set()
+        for node in ast.walk(run):
+            if not isinstance(node, ast.Call):
+                continue
+            name = node.func.id if isinstance(node.func, ast.Name) else node.func.attr if isinstance(node.func, ast.Attribute) else ''
+            argument = {'load_danish_alignment': 1, 'load_align_model': 1, 'align': 4}.get(name)
+            if argument is not None:
+                self.assertIsInstance(node.args[argument], ast.Name)
+                self.assertEqual(node.args[argument].id, 'alignment_device')
+                checked.add(name)
+            if name == 'load_model':
+                self.assertEqual(node.args[1].id, 'device')
+        self.assertEqual(checked, {'load_danish_alignment', 'load_align_model', 'align'})
+
     def test_checkpoint_reuse_and_invalidation(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'checkpoint.json'
@@ -159,6 +180,86 @@ class WorkerTests(unittest.TestCase):
                 self.assertIs(cache.get('asr', object), asr)
             finally:
                 cache.close()
+
+    def test_diagnostics_durable_sanitized_and_append_across_runs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            log = worker.WorkerDiagnostics(directory)
+            secret = 'PRIVATE/audio.wav token=secret transcript words'
+            request = {'mode': 'transcribe', 'language': 'da', 'audio': secret, 'token': secret,
+                       'settings': {'model': 'base', 'device': 'cuda', 'gpuIndex': 1,
+                                    'cpuThreads': 4, 'batchSize': 1, 'computeType': 'float16',
+                                    'speakerCount': 0, 'diarization': True, 'extra': secret}}
+            def fsync_after_flush(descriptor):
+                self.assertTrue(log.path.read_bytes().endswith(b'\n'))
+            with patch.object(worker.os, 'fsync', side_effect=fsync_after_flush) as sync:
+                log.settings(request)
+                log.error(RuntimeError(secret))
+                worker.WorkerDiagnostics(directory).write('completed', stage='transcribe')
+                self.assertEqual(sync.call_count, 3)
+            text = log.path.read_text(encoding='utf-8')
+            self.assertNotIn(secret, text)
+            self.assertNotIn('token', text)
+            records = [json.loads(line) for line in text.splitlines()]
+            self.assertEqual(records[0]['gpuIndex'], 1)
+            self.assertEqual(records[1]['errorClass'], 'RuntimeError')
+            self.assertEqual(len(records), 3)
+            for record in records:
+                self.assertIsInstance(record['pid'], int)
+                self.assertTrue(record['utc'].endswith('+00:00'))
+
+    def test_diagnostics_rotation_is_bounded_and_preserves_prior_records(self):
+        with tempfile.TemporaryDirectory() as directory:
+            log = worker.WorkerDiagnostics(directory)
+            log.MAX_BYTES = 350
+            for _ in range(30):
+                log.write('before', stage='load_asr')
+            files = list(log.path.parent.glob('worker-diagnostics.jsonl*'))
+            self.assertEqual(len(files), log.BACKUPS + 1)
+            for file in files:
+                self.assertLessEqual(file.stat().st_size, log.MAX_BYTES)
+                self.assertTrue(file.read_text().strip())
+            previous = log.path.read_bytes()
+            worker.WorkerDiagnostics(directory).write('after', stage='load_asr')
+            self.assertTrue(log.path.read_bytes().startswith(previous))
+
+    def test_diagnostics_failures_never_abort_stage(self):
+        with tempfile.TemporaryDirectory() as directory:
+            log = worker.WorkerDiagnostics(directory)
+            with patch.object(worker.os, 'fsync', side_effect=OSError('private detail')):
+                with log.stage('infer_asr'):
+                    pass
+            # A library error still propagates unchanged, without its message in logs.
+            with self.assertRaisesRegex(ValueError, 'private detail'):
+                with log.stage('infer_align'):
+                    raise ValueError('private detail')
+            self.assertNotIn('private detail', log.path.read_text())
+            with patch.object(Path, 'mkdir', side_effect=PermissionError('private detail')):
+                log.write('before', stage='imports')
+
+    def test_diagnostics_gpu_snapshot_uses_requested_index_only(self):
+        with tempfile.TemporaryDirectory() as directory:
+            log = worker.WorkerDiagnostics(directory)
+            torch = Mock()
+            props = Mock(name='gpu_props')
+            props.name = 'NVIDIA Test GPU'
+            props.total_memory = 8000
+            torch.cuda.get_device_properties.return_value = props
+            torch.cuda.mem_get_info.return_value = (6000, 8000)
+            for name in ('memory_allocated', 'memory_reserved', 'max_memory_allocated', 'max_memory_reserved'):
+                getattr(torch.cuda, name).return_value = 100
+            log.memory(torch, {'device': 'cuda', 'gpuIndex': 1}, 'load_asr_before')
+            for name in ('get_device_properties', 'mem_get_info', 'memory_allocated', 'memory_reserved',
+                         'max_memory_allocated', 'max_memory_reserved'):
+                getattr(torch.cuda, name).assert_called_once_with(1)
+            torch.cuda.set_device.assert_not_called()
+            torch.cuda.synchronize.assert_not_called()
+            record = json.loads(log.path.read_text())
+            self.assertEqual(record['gpuIndex'], 1)
+            self.assertEqual(record['gpuName'], 'NVIDIA Test GPU')
+            self.assertEqual(record['freeBytes'], 6000)
+            torch.cuda.mem_get_info.side_effect = RuntimeError('private detail')
+            log.memory(torch, {'device': 'cuda', 'gpuIndex': 1}, 'infer_asr_after')
+            self.assertNotIn('private detail', log.path.read_text())
 
     def test_offline_guard(self):
         originals = socket.socket.connect, socket.socket.connect_ex, socket.create_connection

@@ -62,7 +62,7 @@ public sealed class RecordingLibrary
         SaveMetadata(item.Folder, item.Metadata);
     }
 
-    public void Delete(RecordingListItem item)
+    public void Delete(RecordingListItem item, bool allowInterruptedRecording = false)
     {
         var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(RootFolder));
         var folder = Path.TrimEndingDirectorySeparator(Path.GetFullPath(item.Folder));
@@ -72,9 +72,47 @@ public sealed class RecordingLibrary
         if ((File.GetAttributes(folder) & FileAttributes.ReparsePoint) != 0)
             throw new InvalidOperationException("Cannot delete a linked meeting folder.");
         var current = TryLoad(folder) ?? throw new InvalidOperationException("Meeting metadata could not be read.");
-        if (current.Metadata.Status == "recording")
+        if (current.Metadata.Status == "recording" && !allowInterruptedRecording)
             throw new InvalidOperationException("Stop the recording before deleting this meeting.");
-        Directory.Delete(folder, recursive: true);
+        var audioLeases = new List<FileStream>();
+        try
+        {
+            if (allowInterruptedRecording)
+            {
+                // Keep every lease until deletion completes. FileShare.Delete permits
+                // our deletion but denies existing/new audio readers and writers.
+                // Closing a probe first would leave a race with another recorder.
+                foreach (var audio in InterruptedRecordingAudio(folder))
+                {
+                    try { audioLeases.Add(File.Open(audio, FileMode.Open, FileAccess.Read, FileShare.Delete)); }
+                    catch (IOException ex)
+                    {
+                        throw new IOException("The interrupted recording's audio is in use. Stop recording or playback in other apps before deleting it.", ex);
+                    }
+                }
+            }
+            Directory.Delete(folder, recursive: true);
+        }
+        finally
+        {
+            foreach (var lease in audioLeases) lease.Dispose();
+        }
+    }
+
+    private static IEnumerable<string> InterruptedRecordingAudio(string folder)
+    {
+        foreach (var entry in Directory.EnumerateFileSystemEntries(folder))
+        {
+            var attributes = File.GetAttributes(entry);
+            if ((attributes & FileAttributes.ReparsePoint) != 0)
+                throw new InvalidOperationException("Cannot delete an interrupted recording containing linked files or folders.");
+            if ((attributes & FileAttributes.Directory) != 0)
+            {
+                foreach (var audio in InterruptedRecordingAudio(entry)) yield return audio;
+            }
+            else if (string.Equals(Path.GetExtension(entry), ".wav", StringComparison.OrdinalIgnoreCase))
+                yield return entry;
+        }
     }
 
     public void OpenFolder(string? folder = null)

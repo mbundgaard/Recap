@@ -67,7 +67,12 @@ public static class LocalWhisperRuntime
     {
         try
         {
-            if (_residentWorker is not null) await _residentWorker.DisposeAsync();
+            if (_residentWorker is not null)
+            {
+                LocalWhisperDiagnostics.Shared.Record(LocalDiagnosticEvent.UnloadStarted, _residentSettings);
+                await _residentWorker.DisposeAsync();
+                LocalWhisperDiagnostics.Shared.Record(LocalDiagnosticEvent.UnloadCompleted, _residentSettings);
+            }
         }
         finally
         {
@@ -146,7 +151,11 @@ public static class LocalWhisperRuntime
     private static async Task SetupManyAsync(IReadOnlyList<LocalWhisperSettings> selections, bool download,
         IProgress<LocalProgress>? progress, CancellationToken cancellation)
     {
-        foreach (var selected in selections) selected.Validate();
+        foreach (var selected in selections)
+        {
+            selected.Validate();
+            LocalWhisperDiagnostics.Shared.Record(LocalDiagnosticEvent.SetupRequested, selected);
+        }
         if (!Supported) throw new InvalidOperationException("Local Whisper currently requires Windows x64.");
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
         lock (Gate)
@@ -154,7 +163,8 @@ public static class LocalWhisperRuntime
             if (_setupCancellation is not null) throw new InvalidOperationException("A local setup or verification is already running.");
             _setupCancellation = linked;
         }
-        void Report(LocalProgress value) { lock (Gate) _progress = value; progress?.Report(value); }
+        var logPhase = LocalWhisperDiagnostics.Shared.PhaseTracker();
+        void Report(LocalProgress value) { logPhase(value); lock (Gate) _progress = value; progress?.Report(value); }
         var entered = false;
         try
         {
@@ -168,6 +178,7 @@ public static class LocalWhisperRuntime
             {
                 linked.Token.ThrowIfCancellationRequested();
                 var settings = await HardwareDetection.ResolveAsync(selected, linked.Token);
+                LocalWhisperDiagnostics.Shared.Record(LocalDiagnosticEvent.SetupResolved, settings);
                 var backend = settings.Device;
                 var receipt = Receipt(settings, backend);
                 if (File.Exists(receipt)) File.Delete(receipt); // A failed verification must not leave a stale ready flag.
@@ -205,10 +216,11 @@ public static class LocalWhisperRuntime
                     throw new InvalidDataException("The offline verification did not report a complete local model installation.");
                 AtomicFile.WriteText(Receipt(settings, backend), JsonSerializer.Serialize(new { engineKey = EngineKey(backend), verifiedUtc = DateTime.UtcNow, settings, files }, Json));
             }
+            LocalWhisperDiagnostics.Shared.Record(LocalDiagnosticEvent.SetupCompleted);
             Report(new("Ready. Selected models loaded successfully with networking disabled.", 100));
         }
-        catch (OperationCanceledException) { Report(new("Setup cancelled. Completed downloads are kept for retry.", 0)); throw; }
-        catch (Exception ex) { Report(new("Setup or verification failed: " + ex.Message, 0)); throw; }
+        catch (OperationCanceledException) { LocalWhisperDiagnostics.Shared.Record(LocalDiagnosticEvent.SetupCancelled); Report(new("Setup cancelled. Completed downloads are kept for retry.", 0)); throw; }
+        catch (Exception ex) { LocalWhisperDiagnostics.Shared.Record(LocalDiagnosticEvent.SetupFailed); Report(new("Setup or verification failed: " + ex.Message, 0)); throw; }
         finally
         {
             if (entered) ResidentGate.Release();
@@ -221,6 +233,7 @@ public static class LocalWhisperRuntime
     {
         if (!Supported) throw new InvalidOperationException("Local Whisper currently requires Windows x64.");
         selected.Validate();
+        LocalWhisperDiagnostics.Shared.Record(LocalDiagnosticEvent.RecognitionRequested, selected);
         var key = JsonSerializer.Serialize(selected.WorkerSettings(), Json);
         var prepared = false;
         while (true)
@@ -241,6 +254,7 @@ public static class LocalWhisperRuntime
                     settings.ComputeType = selected.ComputeType == "auto" ? "int8" : selected.ComputeType;
                     settings.Validate();
                 }
+                LocalWhisperDiagnostics.Shared.Record(LocalDiagnosticEvent.RecognitionResolved, settings);
                 if (IsReady(settings, settings.Device))
                 {
                     _residentSettings = settings.Copy();
@@ -253,6 +267,7 @@ public static class LocalWhisperRuntime
                         engineKey = EngineKey(settings.Device), audio, track, language, outputPrefix = prefix, result
                     }, Json);
                     await _residentWorker.ExecuteAsync(request, progress.Report, cancellation);
+                    LocalWhisperDiagnostics.Shared.Record(LocalDiagnosticEvent.RecognitionCompleted, settings);
                     bool idle;
                     lock (Gate) idle = _processingBatches == 0;
                     if (idle) await ReleaseResidentCoreAsync(); // Standalone calls have no owning queue.
@@ -261,8 +276,15 @@ public static class LocalWhisperRuntime
                 await ReleaseResidentCoreAsync();
                 if (prepared) throw new InvalidOperationException("Local model installation changed after setup; retry processing.");
             }
+            catch (OperationCanceledException)
+            {
+                LocalWhisperDiagnostics.Shared.Record(LocalDiagnosticEvent.RecognitionCancelled);
+                await ReleaseResidentCoreAsync();
+                throw;
+            }
             catch
             {
+                LocalWhisperDiagnostics.Shared.Record(LocalDiagnosticEvent.RecognitionFailed);
                 await ReleaseResidentCoreAsync();
                 throw;
             }
@@ -341,7 +363,10 @@ public static class LocalWhisperRuntime
     private static async Task RunAsync(string executable, string[] arguments, string? input, Action<LocalProgress>? progress, CancellationToken token)
     {
         using var process = new Process { StartInfo = CreateStartInfo(executable, arguments) };
+        LocalWhisperDiagnostics.Shared.Record(LocalDiagnosticEvent.ProcessStarting);
         process.Start();
+        LocalWhisperDiagnostics.Shared.Record(LocalDiagnosticEvent.ProcessStarted, childPid: process.Id);
+        var logPhase = LocalWhisperDiagnostics.Shared.PhaseTracker(process.Id);
         var errorCode = "runtime_failed";
         var done = false;
         var stdout = Task.Run(async () =>
@@ -356,13 +381,21 @@ public static class LocalWhisperRuntime
                     switch (message.GetProperty("kind").GetString())
                     {
                         case "done": done = message.GetProperty("ok").GetBoolean(); break;
-                        case "error": errorCode = message.GetProperty("code").GetString() ?? "runtime_failed"; break;
+                        case "error":
+                            errorCode = message.GetProperty("code").GetString() ?? "runtime_failed";
+                            LocalWhisperDiagnostics.Shared.Record(LocalDiagnosticEvent.WorkerError, childPid: process.Id, phase: errorCode);
+                            break;
                         case "progress":
                             var phase = message.GetProperty("phase").GetString();
                             if (phase is not ("Recognizing speech" or "Aligning words" or "Identifying speakers" or "Checking transcription model"
                                 or "Checking en alignment model" or "Checking da alignment model" or "Checking speaker diarization model")) phase = "Local processing";
                             var percent = message.GetProperty("percent").GetDouble();
-                            if (double.IsFinite(percent)) progress?.Invoke(new(phase, Math.Clamp(percent, 0, 100)));
+                            if (double.IsFinite(percent))
+                            {
+                                var update = new LocalProgress(phase, Math.Clamp(percent, 0, 100));
+                                logPhase(update);
+                                progress?.Invoke(update);
+                            }
                             break;
                     }
                 }
@@ -386,7 +419,13 @@ public static class LocalWhisperRuntime
         }
         finally
         {
-            if (!process.HasExited) { process.Kill(entireProcessTree: true); await process.WaitForExitAsync(CancellationToken.None); }
+            if (!process.HasExited)
+            {
+                LocalWhisperDiagnostics.Shared.Record(LocalDiagnosticEvent.Terminating, childPid: process.Id);
+                process.Kill(entireProcessTree: true);
+                await process.WaitForExitAsync(CancellationToken.None);
+            }
+            LocalWhisperDiagnostics.Shared.Record(LocalDiagnosticEvent.ProcessExited, childPid: process.Id, exitCode: process.ExitCode);
             await Task.WhenAll(stdout, stderr);
         }
     }

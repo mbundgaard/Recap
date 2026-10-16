@@ -72,7 +72,6 @@
                         <Button Grid.Column="1" Content="&#xE70F;" FontFamily="Segoe MDL2 Assets" Style="{StaticResource DeskButton}" Width="34" Padding="0" Margin="8,0,0,0" VerticalAlignment="Top" Background="Transparent" BorderThickness="0" Foreground="#A9B0BA" ToolTip="Rename meeting" AutomationProperties.Name="Rename meeting" Click="Rename_Click" />
                     </Grid>
                     <TextBlock x:Name="MetaText" Text="" FontSize="13" Foreground="#A9B0BA" TextWrapping="Wrap" />
-                    <Button x:Name="DeleteMeetingButton" Content="Delete meeting" Style="{StaticResource DeskButton}" Background="Transparent" BorderBrush="#795455" Foreground="#F0AAAA" HorizontalAlignment="Left" Margin="0,18,0,0" Click="DeleteMeeting_Click" />
                 </StackPanel>
 
                 <StackPanel Grid.Row="1" Margin="0,44,0,0">
@@ -207,12 +206,16 @@
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
                     <Grid Margin="0,0,0,10">
-                        <TextBlock Text="Identify speakers" FontSize="17" FontWeight="SemiBold" Foreground="#22272E" />
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                        <TextBlock Text="Identify speakers" FontSize="17" FontWeight="SemiBold" Foreground="#22272E" VerticalAlignment="Center" />
+                        <StackPanel x:Name="SpeakerPager" Grid.Column="1" Orientation="Horizontal">
+                            <Button x:Name="PreviousSpeakerPageButton" Content="&lt;" Style="{StaticResource DeskButton}" Width="28" Height="28" Padding="0" Background="Transparent" BorderThickness="0" Foreground="#6B6258" Click="PreviousSpeakerPage_Click" ToolTip="Previous speakers" AutomationProperties.Name="Previous speakers page" />
+                            <Button x:Name="NextSpeakerPageButton" Content="&gt;" Style="{StaticResource DeskButton}" Width="28" Height="28" Padding="0" Margin="4,0,0,0" Background="Transparent" BorderThickness="0" Foreground="#6B6258" Click="NextSpeakerPage_Click" ToolTip="Next speakers" AutomationProperties.Name="Next speakers page" />
+                        </StackPanel>
                     </Grid>
 
-                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                        <StackPanel>
-                            <ItemsControl x:Name="SpeakersList" ItemsSource="{Binding Speakers}">
+                    <StackPanel Grid.Row="1">
+                            <ItemsControl x:Name="SpeakersList" ItemsSource="{Binding VisibleSpeakers}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
                                         <Border Background="#FFFDF8" BorderBrush="#E0D8CB" BorderThickness="1" CornerRadius="18" Padding="15" Margin="0,0,0,10">
@@ -226,7 +229,7 @@
                                                     <ColumnDefinition Width="Auto" />
                                                 </Grid.ColumnDefinitions>
                                                 <TextBlock Text="{Binding SourceLabel}" FontWeight="SemiBold" Foreground="#22272E" VerticalAlignment="Center" Margin="0,0,10,0" />
-                                                <TextBox Grid.Column="1" Text="{Binding DisplayName, UpdateSourceTrigger=PropertyChanged}" VerticalAlignment="Center" Margin="0,0,10,0" AutomationProperties.Name="Speaker name" />
+                                                <TextBox x:Name="SpeakerNameInput" Grid.Column="1" Text="{Binding DisplayName, UpdateSourceTrigger=PropertyChanged}" VerticalAlignment="Center" Margin="0,0,10,0" AutomationProperties.Name="Speaker name" />
                                                 <Button Grid.Column="2" Content="‹" Width="28" Padding="0" Style="{StaticResource DeskButton}" IsEnabled="{Binding HasPreviousSample}" Click="PreviousSample_Click" ToolTip="Previous turn by this speaker" AutomationProperties.Name="Previous speaker turn" />
                                                 <TextBlock Grid.Column="3" Text="{Binding SampleDisplay}" ToolTip="{Binding SampleCountDisplay}" FontSize="11" Foreground="#6B6258" Margin="8,0" VerticalAlignment="Center" />
                                                 <Button Grid.Column="4" Content="›" Width="28" Padding="0" Style="{StaticResource DeskButton}" IsEnabled="{Binding HasNextSample}" Click="NextSample_Click" ToolTip="Next turn by this speaker" AutomationProperties.Name="Next speaker turn" />
@@ -241,8 +244,12 @@
                                 <TextBlock x:Name="EmptySpeakersText" Text="Transcribe first. Then listen to a short sample and name each speaker." Foreground="#6B6258" TextWrapping="Wrap" />
                             </Border>
 
-                        </StackPanel>
-                    </ScrollViewer>
+                            <Grid x:Name="SpeakerNamingNotice" Margin="0,2,0,0">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <TextBlock x:Name="SpeakerNamingHint" Foreground="#6B6258" FontSize="12" VerticalAlignment="Center" TextWrapping="Wrap" />
+                                <Button x:Name="NextUnnamedSpeakerButton" Grid.Column="1" Content="Next unnamed" Style="{StaticResource DeskButton}" Height="28" Padding="6,0" Background="Transparent" BorderThickness="0" Foreground="#6B6258" Click="NextUnnamedSpeaker_Click" ToolTip="Go to the next speaker who needs a name" />
+                            </Grid>
+                    </StackPanel>
                     <TextBlock Grid.Row="2" Text="Transcript" FontSize="17" FontWeight="SemiBold" Foreground="#22272E" Margin="0,16,0,10" />
                     <Border Grid.Row="3" Background="#FFFDF8" BorderBrush="#E0D8CB" BorderThickness="1" CornerRadius="18" Padding="18">
                         <Grid>

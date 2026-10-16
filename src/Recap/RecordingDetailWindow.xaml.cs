@@ -26,7 +26,8 @@ public partial class RecordingDetailWindow : Window
     private readonly Action<RecordingListItem, string> _requestReprocess;
     private Dictionary<string, string> _savedSpeakerNames = [];
     private bool _wasProcessing;
-    private bool IsLocalTranscript => _item.Metadata.TranscriptionProviderId == "local-whisper";
+    // Both providers already return timed speaker-labelled text; Markdown export needs no LLM.
+    private bool IsLocalTranscript => _item.Metadata.TranscriptionProviderId is "local-whisper" or "grok-speech";
     private bool IsProcessing => _item.IsProcessing || _item.IsManuallyQueued;
     internal bool IsBusy => _isPreparing || _isGenerating || IsProcessing;
     private bool _isGenerating;
@@ -106,15 +107,14 @@ public partial class RecordingDetailWindow : Window
         Speakers.Clear();
         _savedSpeakerNames.Clear();
         LoadSpeakerMap();
-        if (Speakers.Count == 0)
+        // The transcript defines the current roster; saved names must not hide new speakers.
+        var rawPath = Path.Combine(_item.Folder, "raw-remote-transcript.json");
+        if (File.Exists(rawPath))
         {
-            var rawPath = Path.Combine(_item.Folder, "raw-remote-transcript.json");
-            if (File.Exists(rawPath))
-            {
-                var segments = JsonSerializer.Deserialize<List<TranscriptSegment>>(File.ReadAllText(rawPath)) ?? [];
-                PopulateSpeakersFromSegments(segments);
-            }
+            var segments = JsonSerializer.Deserialize<List<TranscriptSegment>>(File.ReadAllText(rawPath)) ?? [];
+            PopulateSpeakersFromSegments(segments);
         }
+        ResetSpeakerPage();
     }
 
     private void RefreshView()
@@ -124,7 +124,6 @@ public partial class RecordingDetailWindow : Window
         MetaText.Text = $"{_item.Metadata.StartedLocal:dddd, dd MMM yyyy HH:mm} · {_item.DurationDisplay}";
 
         var state = GetMeetingState();
-        DeleteMeetingButton.IsEnabled = !IsProcessing && _item.Metadata.Status != "recording";
         SpeechProgress.Visibility = IsProcessing ? Visibility.Visible : Visibility.Collapsed;
         SpeechProgress.IsIndeterminate = _item.IsManuallyQueued || _item.IsProgressIndeterminate;
         SpeechProgress.Value = _item.ProcessingPercent;
@@ -142,11 +141,13 @@ public partial class RecordingDetailWindow : Window
         EmptySpeakersText.Text = state.HasTranscripts
             ? "No speakers detected. You can create the final transcript without naming speakers."
             : "Transcribe first. Then listen to a short sample and name each speaker.";
+        var namedSpeakers = Speakers.Count(IsSpeakerNamed);
         SpeakerStatusText.Text = Speakers.Count == 0
             ? state.HasTranscripts ? "No speakers detected" : "No speakers loaded"
             : SpeakerNamesSaved
-                ? "Names saved"
-                : "Needs names";
+                ? $"{Speakers.Count} of {Speakers.Count} named · Saved"
+                : $"{namedSpeakers} of {Speakers.Count} named";
+        RefreshSpeakerPage();
 
         var finalPath = Path.Combine(_item.Folder, FinalTranscriptFileName);
         var finalMarkdown = !IsProcessing && File.Exists(finalPath) ? File.ReadAllText(finalPath) : null;
@@ -189,34 +190,6 @@ public partial class RecordingDetailWindow : Window
         SaveNamesButton.IsEnabled = state.SpeakersLoaded && state.SpeakersIdentified && !SpeakerNamesSaved && !IsProcessing;
         GenerateButton.Content = hasFinalTranscript ? "Transcript created" : "Create transcript";
         GenerateButton.IsEnabled = state.CanGenerate && !hasFinalTranscript && !IsProcessing;
-    }
-
-    private void DeleteMeeting_Click(object sender, RoutedEventArgs e)
-    {
-        if (_isPreparing || IsProcessing || _item.Metadata.Status == "recording") return;
-        var result = MessageBox.Show(this,
-            $"Permanently delete ‘{_item.Title}’?\n\nAll audio, transcripts, speaker names and meeting details will be removed. This cannot be undone.",
-            "Delete meeting", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
-        if (result != MessageBoxResult.Yes) return;
-        try
-        {
-            _playbackTimer.Stop();
-            _sampleStopTimer.Stop();
-            _player.Close();
-            _isMixedPlaybackLoaded = false;
-            _isMixedPlaybackPlaying = false;
-            PlayMixedButton.Content = "▶ Play";
-            _library.Delete(_item);
-            AppLogger.Info($"Meeting deleted: {_item.Folder}");
-            Close();
-        }
-        catch (Exception ex)
-        {
-            AppLogger.Error(ex, "Could not delete meeting.");
-            RefreshView();
-            MessageBox.Show(this, "The meeting could not be completely deleted. Close any other app using its audio and try again.",
-                "Delete failed", MessageBoxButton.OK, MessageBoxImage.Error);
-        }
     }
 
     private void ResetCopyFeedback()
@@ -689,9 +662,7 @@ public partial class RecordingDetailWindow : Window
             return false;
         }
 
-        return Speakers.All(x =>
-            !string.IsNullOrWhiteSpace(x.DisplayName)
-            && (IsLocalTranscript || !string.Equals(x.DisplayName.Trim(), x.SourceLabel, StringComparison.OrdinalIgnoreCase)));
+        return Speakers.All(IsSpeakerNamed);
     }
 
     private void LoadSpeakerMap()
@@ -759,13 +730,15 @@ public partial class RecordingDetailWindow : Window
             var item = new SpeakerNameItem
             {
                 SourceLabel = group.Key,
-                DisplayName = IsLocalTranscript ? group.Key : string.Empty,
+                DisplayName = _savedSpeakerNames.TryGetValue(group.Key, out var savedName)
+                    ? savedName : IsLocalTranscript ? group.Key : string.Empty,
                 PreviewText = sample.Text,
                 SampleStart = sample.Start,
                 SampleEnd = sample.End
             };
             item.SetSamples(group);
-            if (IsLocalTranscript) _savedSpeakerNames[item.SourceLabel] = item.DisplayName;
+            if (IsLocalTranscript && !_savedSpeakerNames.ContainsKey(item.SourceLabel))
+                _savedSpeakerNames[item.SourceLabel] = item.DisplayName;
             item.PropertyChanged += (_, args) => { if (args.PropertyName == nameof(SpeakerNameItem.DisplayName)) RefreshView(); };
             Speakers.Add(item);
         }

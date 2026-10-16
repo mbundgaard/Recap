@@ -14,7 +14,8 @@ public sealed class MeetingRecognitionService(RecordingLibrary library, AppSetti
     public static bool RequiresProviderReset(RecordingListItem item, AppSettings settings) =>
         new[] { "remote", "microphone" }.Any(track => File.Exists(Path.Combine(item.Folder, $"raw-{track}-transcript.json")))
         && ((item.Metadata.TranscriptionProviderId ?? "azure-speech") != settings.SpeechProviderId
-            || settings.SpeechProviderId == "local-whisper" && item.Metadata.TranscriptionModel != settings.LocalWhisper.ForLanguage(item.Metadata.TranscriptionLanguage ?? "en-US").Model);
+            || settings.SpeechProviderId == "local-whisper" && item.Metadata.TranscriptionModel != settings.LocalWhisper.ForLanguage(item.Metadata.TranscriptionLanguage ?? "en-US").Model
+            || settings.SpeechProviderId == "grok-speech" && item.Metadata.TranscriptionModel != settings.GrokSpeech.Model);
 
     public static void ResetSpeechResults(RecordingLibrary library, RecordingListItem item, string language)
     {
@@ -24,7 +25,8 @@ public sealed class MeetingRecognitionService(RecordingLibrary library, AppSetti
             throw new ArgumentException("Choose English or Danish.", nameof(language));
         // Audio is retained; only language-dependent derived results are invalidated.
         foreach (var name in new[] { "raw-remote-transcript.json", "raw-microphone-transcript.json",
-            "speaker-map.json", "merged-transcript.md", "final-transcript.md", "summary.md" })
+            "speaker-map.json", "merged-transcript.md", "final-transcript.md", "summary.md",
+            "provider-remote-response.json", "provider-microphone-response.json" })
             File.Delete(Path.Combine(item.Folder, name));
         foreach (var track in new[] { "remote", "microphone" })
             foreach (var stage in new[] { "asr", "aligned", "diarization", "result" })
@@ -55,13 +57,14 @@ public sealed class MeetingRecognitionService(RecordingLibrary library, AppSetti
         };
         if (tracks.All(t => File.Exists(Path.Combine(item.Folder, $"raw-{t.Source}-transcript.json"))))
         {
-            if (item.Metadata.TranscriptionProviderId == "local-whisper" && !item.HasFinalTranscript)
+            if (item.Metadata.TranscriptionProviderId is "local-whisper" or "grok-speech" && !item.HasFinalTranscript)
                 LocalTranscriptExporter.Export(library, item);
             return;
         }
         var local = settings.SpeechProviderId == "local-whisper";
         await using var localBatch = local ? Recap.LocalWhisper.LocalWhisperRuntime.BeginProcessingBatch() : null;
-        if (!local && settings.SpeechProviderId != "azure-speech")
+        var grok = settings.SpeechProviderId == "grok-speech";
+        if (!local && !grok && settings.SpeechProviderId != "azure-speech")
             throw new InvalidOperationException("Select a supported speech provider in Settings.");
         if (RequiresProviderReset(item, settings))
             throw new InvalidOperationException("Partial speech results use a different provider or model. Reprocess this meeting to switch without mixing results.");
@@ -70,6 +73,7 @@ public sealed class MeetingRecognitionService(RecordingLibrary library, AppSetti
         var configured = settings.AzureSpeech;
         ITranscriptionProvider provider = transcriptionProvider ?? (local
             ? new LocalWhisperTranscriptionProvider(settings.LocalWhisper, language)
+            : grok ? new GrokSpeechTranscriptionProvider(settings.GrokSpeech, language)
             : new AzureSpeechTranscriptionProvider(new AzureSpeechSettings
             {
                 SubscriptionKey = configured.SubscriptionKey,
@@ -79,7 +83,7 @@ public sealed class MeetingRecognitionService(RecordingLibrary library, AppSetti
                 RecognitionLanguage = language
             }));
         item.Metadata.TranscriptionProviderId = settings.SpeechProviderId;
-        item.Metadata.TranscriptionModel = local ? settings.LocalWhisper.ForLanguage(language).Model : null;
+        item.Metadata.TranscriptionModel = local ? settings.LocalWhisper.ForLanguage(language).Model : grok ? settings.GrokSpeech.Model : null;
         library.SaveMetadata(item.Folder, item.Metadata);
         var fractions = new double[2];
         var phases = new string?[2];
@@ -90,7 +94,9 @@ public sealed class MeetingRecognitionService(RecordingLibrary library, AppSetti
             {
                 fractions[index] = Math.Max(fractions[index], fraction);
                 var percent = fractions.Average() * 100;
-                progress.Report(new($"{(local ? phases[index] ?? "Local speech processing" : "Recognizing speech")} · {percent:0}%", percent));
+                var message = local || grok ? phases[index] ?? (local ? "Local speech processing" : "Grok speech processing") : "Recognizing speech";
+                var indeterminate = (local || grok) && fractions[index] == 0;
+                progress.Report(new(indeterminate ? message : $"{message} · {percent:0}%", percent, indeterminate));
             }
         }
 
@@ -121,17 +127,22 @@ public sealed class MeetingRecognitionService(RecordingLibrary library, AppSetti
             var result = await provider.TranscribeAsync(
                 new(audioPath, track.Source, track.Speaker, trackProgress, stageProgress), cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
+            if (result.ProviderResponseJson is not null)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                Recap.Storage.AtomicFile.WriteText(Path.Combine(item.Folder, $"provider-{track.Source}-response.json"), result.ProviderResponseJson);
+            }
             var temporary = target + ".tmp";
             await File.WriteAllTextAsync(temporary, result.RawJson, cancellationToken);
             File.Move(temporary, target, overwrite: true);
             Report(index, 1);
         }, cancellationToken);
-        if (local)
+        if (local || grok)
             for (var index = 0; index < tracks.Length; index++) await ProcessTrack(index);
         else
             await Task.WhenAll(Enumerable.Range(0, tracks.Length).Select(ProcessTrack));
         cancellationToken.ThrowIfCancellationRequested();
-        if (local) LocalTranscriptExporter.Export(library, item);
+        if (local || grok) LocalTranscriptExporter.Export(library, item);
     }
 
     private sealed class InlineProgress<T>(Action<T> report) : IProgress<T>

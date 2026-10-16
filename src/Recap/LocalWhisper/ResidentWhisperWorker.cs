@@ -10,6 +10,7 @@ namespace Recap.LocalWhisper;
 internal sealed class ResidentWhisperWorker : IAsyncDisposable
 {
     private readonly Process _process;
+    private readonly LocalWhisperDiagnostics _diagnostics;
     private readonly Task _stderrDrain;
     private readonly SafeFileHandle _job;
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -23,8 +24,12 @@ internal sealed class ResidentWhisperWorker : IAsyncDisposable
     private int _diarizationLoadCount;
     private static readonly TimeSpan ShutdownTimeout = TimeSpan.FromSeconds(3);
 
-    public ResidentWhisperWorker(ProcessStartInfo startInfo)
+    public ResidentWhisperWorker(ProcessStartInfo startInfo) : this(startInfo, LocalWhisperDiagnostics.Shared) { }
+
+    internal ResidentWhisperWorker(ProcessStartInfo startInfo, LocalWhisperDiagnostics diagnostics)
     {
+        _diagnostics = diagnostics;
+        _diagnostics.Record(LocalDiagnosticEvent.ProcessStarting);
         if (startInfo.UseShellExecute || !startInfo.RedirectStandardInput
             || !startInfo.RedirectStandardOutput || !startInfo.RedirectStandardError)
             throw new ArgumentException("Local worker requires redirected standard streams.", nameof(startInfo));
@@ -33,6 +38,7 @@ internal sealed class ResidentWhisperWorker : IAsyncDisposable
         try
         {
             if (!_process.Start()) throw new InvalidOperationException("Local worker could not start.");
+            _diagnostics.Record(LocalDiagnosticEvent.ProcessStarted, childPid: _process.Id);
             // Windows 8+ supports nested jobs. Never run unowned if an enclosing
             // host job or security policy prevents assignment to our kill-on-close job.
             if (!AssignProcessToJobObject(_job, _process.Handle))
@@ -40,6 +46,7 @@ internal sealed class ResidentWhisperWorker : IAsyncDisposable
         }
         catch
         {
+            _diagnostics.Record(LocalDiagnosticEvent.ProcessFailed);
             try
             {
                 if (_process.Id > 0 && !_process.HasExited)
@@ -136,10 +143,12 @@ internal sealed class ResidentWhisperWorker : IAsyncDisposable
                 throw new ArgumentException("Expected one compact JSON request.", nameof(serializedRequest));
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
             var token = linked.Token;
+            var logPhase = _diagnostics.PhaseTracker(_process.Id);
             try
             {
                 token.ThrowIfCancellationRequested();
                 if (!_ready) await WaitForReadyAsync(token);
+                _diagnostics.Record(LocalDiagnosticEvent.RequestStarted, childPid: _process.Id);
                 await _process.StandardInput.WriteLineAsync(serializedRequest.AsMemory(), token);
                 await _process.StandardInput.FlushAsync(token);
                 while (true)
@@ -156,11 +165,16 @@ internal sealed class ResidentWhisperWorker : IAsyncDisposable
                         case "done":
                             if (!message.GetProperty("ok").GetBoolean()) throw Failure();
                             token.ThrowIfCancellationRequested();
+                            _diagnostics.Record(LocalDiagnosticEvent.RequestCompleted, childPid: _process.Id);
                             return;
                         case "error":
+                            _diagnostics.Record(LocalDiagnosticEvent.WorkerError, childPid: _process.Id,
+                                phase: message.TryGetProperty("code", out var code) && code.ValueKind == JsonValueKind.String ? code.GetString() : "runtime_failed");
                             throw Failure();
                         case "loaded":
-                            switch (message.GetProperty("role").GetString())
+                            var role = message.GetProperty("role").GetString();
+                            _diagnostics.Record(LocalDiagnosticEvent.ModelLoaded, childPid: _process.Id, phase: role);
+                            switch (role)
                             {
                                 case "asr": Interlocked.Increment(ref _asrLoadCount); break;
                                 case "align": Interlocked.Increment(ref _alignmentLoadCount); break;
@@ -174,19 +188,26 @@ internal sealed class ResidentWhisperWorker : IAsyncDisposable
                                 or "Checking da alignment model" or "Checking speaker diarization model"))
                                 phase = "Local processing";
                             var percent = message.GetProperty("percent").GetDouble();
-                            if (double.IsFinite(percent)) progress?.Invoke(new(phase, Math.Clamp(percent, 0, 100)));
+                            if (double.IsFinite(percent))
+                            {
+                                var update = new LocalProgress(phase, Math.Clamp(percent, 0, 100));
+                                logPhase(update);
+                                progress?.Invoke(update);
+                            }
                             break;
                     }
                 }
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
             {
+                _diagnostics.Record(LocalDiagnosticEvent.RequestCancelled, childPid: _process.Id);
                 await TerminateAsync();
                 if (cancellationToken.IsCancellationRequested) throw new OperationCanceledException(cancellationToken);
                 throw Failure();
             }
             catch
             {
+                _diagnostics.Record(LocalDiagnosticEvent.RequestFailed, childPid: _process.Id);
                 await TerminateAsync();
                 // Never propagate protocol content, recognized text, paths or library diagnostics.
                 throw Failure();
@@ -218,6 +239,7 @@ internal sealed class ResidentWhisperWorker : IAsyncDisposable
             }
             cancellationToken.ThrowIfCancellationRequested();
             _ready = true;
+            _diagnostics.Record(LocalDiagnosticEvent.ProcessReady, childPid: pid);
             return;
         }
     }
@@ -237,6 +259,7 @@ internal sealed class ResidentWhisperWorker : IAsyncDisposable
     private async Task TerminateAsync()
     {
         _failed = true;
+        _diagnostics.Record(LocalDiagnosticEvent.Terminating, childPid: _process.Id);
         // Cancellation may precede the ready event. EOF also releases an idle
         // interpreter that escaped launcher assignment and has not reported its PID.
         try { _process.StandardInput.Close(); }
@@ -252,7 +275,12 @@ internal sealed class ResidentWhisperWorker : IAsyncDisposable
             if (_interpreter is not null && !_interpreter.HasExited)
                 _interpreter.Kill(entireProcessTree: true);
             await _process.WaitForExitAsync(CancellationToken.None);
-            if (_interpreter is not null) await _interpreter.WaitForExitAsync(CancellationToken.None);
+            _diagnostics.Record(LocalDiagnosticEvent.ProcessExited, childPid: _process.Id, exitCode: _process.ExitCode);
+            if (_interpreter is not null)
+            {
+                await _interpreter.WaitForExitAsync(CancellationToken.None);
+                _diagnostics.Record(LocalDiagnosticEvent.ProcessExited, childPid: _interpreter.Id, exitCode: _interpreter.ExitCode);
+            }
         }
         catch (InvalidOperationException) { }
         finally { await Task.WhenAll(stdoutDrain, _stderrDrain); }
@@ -261,6 +289,7 @@ internal sealed class ResidentWhisperWorker : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        _diagnostics.Record(LocalDiagnosticEvent.UnloadStarted, childPid: _process.Id);
         // An in-flight request must not make disposal wait indefinitely.
         _lifetime.Cancel();
         await _gate.WaitAsync();
@@ -278,12 +307,15 @@ internal sealed class ResidentWhisperWorker : IAsyncDisposable
                     try { await _process.WaitForExitAsync(timeout.Token); }
                     catch (OperationCanceledException)
                     {
+                        _diagnostics.Record(LocalDiagnosticEvent.Terminating, childPid: _process.Id);
                         _job.Dispose();
                         await _process.WaitForExitAsync(CancellationToken.None);
                     }
                 }
                 finally
                 {
+                    if (_process.HasExited)
+                        _diagnostics.Record(LocalDiagnosticEvent.ProcessExited, childPid: _process.Id, exitCode: _process.ExitCode);
                     // A child may inherit pipes even after the resident exits normally.
                     _job.Dispose();
                     await Task.WhenAll(stdoutDrain, _stderrDrain);
@@ -293,6 +325,7 @@ internal sealed class ResidentWhisperWorker : IAsyncDisposable
         finally
         {
             _job.Dispose();
+            _diagnostics.Record(LocalDiagnosticEvent.UnloadCompleted, childPid: _process.Id);
             _interpreter?.Dispose();
             _process.Dispose();
             _lifetime.Dispose();

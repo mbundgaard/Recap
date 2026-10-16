@@ -18,4 +18,5 @@ public sealed record TrackTranscriptResult(
     string SourceTrack,
     string SpeakerLabel,
     IReadOnlyList<TranscriptSegment> Segments,
-    string RawJson);
+    string RawJson,
+    string? ProviderResponseJson = null);

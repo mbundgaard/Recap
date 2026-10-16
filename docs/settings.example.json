@@ -4,7 +4,7 @@
   "LogsFolder": "%LOCALAPPDATA%\\Recap\\Logs",
   "SpeechProviderId": "azure-speech",
   "SpeechRecognitionPaused": true,
-  "CheckForUpdatesOnStartup": false,
+  "CheckForUpdatesOnStartup": true,
   "LlmProviderId": "openai-compatible",
   "LocalWhisper": {
     "EnglishModel": "base",

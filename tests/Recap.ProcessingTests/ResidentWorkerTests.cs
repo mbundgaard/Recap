@@ -54,7 +54,7 @@ internal static class ResidentWorkerTests
         }
     }
 
-    private static ResidentWhisperWorker Start()
+    private static ResidentWhisperWorker Start(LocalWhisperDiagnostics diagnostics)
     {
         var executable = Environment.ProcessPath ?? throw new Exception("Missing test executable path");
         var start = new ProcessStartInfo(executable)
@@ -67,13 +67,15 @@ internal static class ResidentWorkerTests
         if (Path.GetFileNameWithoutExtension(executable).Equals("dotnet", StringComparison.OrdinalIgnoreCase))
             start.ArgumentList.Add(Assembly.GetExecutingAssembly().Location);
         start.ArgumentList.Add("--resident-fixture");
-        return new ResidentWhisperWorker(start);
+        return new ResidentWhisperWorker(start, diagnostics);
     }
 
-    public static async Task RunAsync()
+    public static async Task RunAsync(string root)
     {
+        var logFolder = Path.Combine(root, "resident-diagnostics");
+        var diagnostics = new LocalWhisperDiagnostics(logFolder);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-        var worker = Start();
+        var worker = Start(diagnostics);
         using var process = Process.GetProcessById(worker.ProcessId);
         try
         {
@@ -91,7 +93,7 @@ internal static class ResidentWorkerTests
 
         foreach (var mode in new[] { "error", "invalid" })
         {
-            await using var broken = Start();
+            await using var broken = Start(diagnostics);
             using var child = Process.GetProcessById(broken.ProcessId);
             try
             {
@@ -105,7 +107,7 @@ internal static class ResidentWorkerTests
             Check(child.HasExited, "Protocol failure must terminate worker before returning");
         }
 
-        await using var cancellable = Start();
+        await using var cancellable = Start(diagnostics);
         using var cancellationChild = Process.GetProcessById(cancellable.ProcessId);
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token);
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -121,7 +123,12 @@ internal static class ResidentWorkerTests
         try { await pending; throw new Exception("Expected request cancellation"); }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
         Check(cancellationChild.HasExited, "Cancellation must await worker exit");
-        Console.WriteLine("PASS: resident transport reuse/load counters, stderr drainage, sanitized failures, overlap rejection, cancellation and disposal.");
+        var log = File.ReadAllText(Path.Combine(logFolder, "runtime.jsonl"));
+        Check(!log.Contains("SECRET_FIXTURE_CONTENT") && !log.Contains("xxxx") && !log.Contains("serializedRequest"),
+            "Diagnostics must never retain protocol secrets, stderr or request payloads");
+        foreach (var kind in new[] { "ProcessStarting", "ProcessReady", "RequestCompleted", "RequestFailed", "RequestCancelled", "ProcessExited", "UnloadCompleted" })
+            Check(log.Contains("\"kind\":\"" + kind + "\""), "Missing durable lifecycle breadcrumb: " + kind);
+        Console.WriteLine("PASS: resident transport reuse/load counters, stderr drainage, sanitized failures, overlap rejection, cancellation, disposal and diagnostic lifecycle.");
     }
 
     private static void Check(bool condition, string message)

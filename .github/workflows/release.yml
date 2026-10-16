@@ -62,7 +62,7 @@ jobs:
           gh run download $env:GITHUB_RUN_ID --name release-files --dir release
           if ($LASTEXITCODE -ne 0) { throw 'Could not download release assets.' }
           @'
-          Windows x64, self-contained single executable. Requires your own speech/AI credentials.
+          Windows x64, self-contained single executable. Local Whisper works offline after model setup; optional cloud providers require your own credentials.
 
           Maintainer checklist before publishing:
           - Test recording, playback and speech recognition on a clean Windows installation.
@@ -71,7 +71,7 @@ jobs:
 
           The update manifest is RSA-SHA256 signed and verified by Recap's embedded public key. The executable is not Authenticode-signed.
           SHA256SUMS.txt alone is only an integrity checksum; in-app updates require update-manifest.json and update-manifest.sig.
-          The opt-in updater checks published stable releases only, requires confirmation, and preserves settings and recordings.
+          Automatic updates check published stable releases on startup and every four hours, and download verified packages in the background. Restart/install requires confirmation and preserves settings and recordings. Existing update opt-outs are preserved.
           Releases older than 0.2.0 require one manual upgrade to obtain the updater.
           '@ | Set-Content release-notes.md
           $downloadUrl = "https://github.com/$env:GH_REPO/releases/download/$env:GITHUB_REF_NAME/Recap-win-x64.exe"

@@ -149,9 +149,10 @@
                                    Style="{StaticResource HelpText}" Margin="0,8,0,22" />
                         <TextBlock Text="Updates" Style="{StaticResource PanelTitle}" />
                         <TextBlock x:Name="UpdateVersionText" Style="{StaticResource HelpText}" Margin="0,0,0,8" />
-                        <CheckBox x:Name="CheckForUpdatesBox" Content="Check for updates when Recap opens"
-                                  Foreground="#20252B" FontSize="13" />
-                        <TextBlock Text="Checks GitHub for published releases. Downloads and restarts require confirmation and never interrupt recording or processing."
+                        <CheckBox x:Name="CheckForUpdatesBox" Foreground="#20252B" FontSize="13">
+                            <TextBlock Text="Automatically check and download updates" TextWrapping="Wrap" />
+                        </CheckBox>
+                        <TextBlock Text="Checks GitHub when Recap opens and every four hours, then downloads and verifies updates in the background. Recording and processing can continue. Restarting to install always requires your confirmation."
                                    Style="{StaticResource HelpText}" />
                         <Button Content="Save and check for updates" Style="{StaticResource DeskButton}"
                                 HorizontalAlignment="Left" Margin="0,12,0,22" Click="SaveAndCheckUpdates_Click" />
@@ -177,21 +178,10 @@
                 <Border x:Name="DevicesSection" Margin="0,26,0,0">
                     <StackPanel>
                         <TextBlock Text="Devices" Style="{StaticResource PanelTitle}" />
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="18" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel>
-                                <TextBlock Text="Meeting audio device" Style="{StaticResource FieldLabel}" />
-                                <ComboBox x:Name="RemoteDeviceBox" DisplayMemberPath="Name" />
-                            </StackPanel>
-                            <StackPanel Grid.Column="2">
-                                <TextBlock Text="Microphone device" Style="{StaticResource FieldLabel}" />
-                                <ComboBox x:Name="MicrophoneDeviceBox" DisplayMemberPath="Name" />
-                            </StackPanel>
-                        </Grid>
+                        <TextBlock Text="Meeting audio device" Style="{StaticResource FieldLabel}" />
+                        <ComboBox x:Name="RemoteDeviceBox" DisplayMemberPath="Name" />
+                        <TextBlock Text="Microphone device" Style="{StaticResource FieldLabel}" Margin="0,16,0,6" />
+                        <ComboBox x:Name="MicrophoneDeviceBox" DisplayMemberPath="Name" />
                         <TextBlock Text="These choices are used when you start the next recording." Style="{StaticResource HelpText}" />
                     </StackPanel>
                 </Border>
@@ -202,35 +192,49 @@
                         <TextBlock Text="Provider" Style="{StaticResource FieldLabel}" />
                         <ComboBox x:Name="SpeechProviderIdBox" SelectedValuePath="Tag" SelectionChanged="SpeechProvider_SelectionChanged">
                             <ComboBoxItem Content="Azure Speech" Tag="azure-speech" />
+                            <ComboBoxItem Content="Grok Speech" Tag="grok-speech" />
                             <ComboBoxItem Content="Local Whisper" Tag="local-whisper" />
                         </ComboBox>
                         <StackPanel x:Name="AzureSpeechPanel" Margin="0,16,0,0">
-                            <TextBlock Text="Resource name" Style="{StaticResource FieldLabel}" />
-                            <TextBox x:Name="AzureSpeechResourceNameBox" />
-                            <TextBlock Text="Azure Speech endpoint" Style="{StaticResource FieldLabel}" Margin="0,16,0,6" />
+                            <TextBlock Text="Azure receives audio when you process a meeting. Service charges may apply." Style="{StaticResource HelpText}" Margin="0,0,0,16" />
+                            <TextBlock Text="Azure Speech endpoint" Style="{StaticResource FieldLabel}" />
                             <TextBox x:Name="AzureSpeechEndpointBox" />
+                            <TextBlock Text="Resource name" Style="{StaticResource FieldLabel}" Margin="0,16,0,6" />
+                            <TextBox x:Name="AzureSpeechResourceNameBox" />
                             <TextBlock Text="Subscription key" Style="{StaticResource FieldLabel}" Margin="0,16,0,6" />
                             <PasswordBox x:Name="AzureSpeechKeyBox" />
-                            <TextBlock Text="Azure receives audio when you process a meeting. Service charges may apply." Style="{StaticResource HelpText}" />
+                        </StackPanel>
+                        <StackPanel x:Name="GrokSpeechPanel" Visibility="Collapsed" Margin="0,16,0,0">
+                            <TextBlock Text="Audio is sent to xAI when you process a meeting. Service charges may apply." Style="{StaticResource HelpText}" Margin="0,0,0,16" />
+                            <TextBlock Text="API key" Style="{StaticResource FieldLabel}" />
+                            <PasswordBox x:Name="GrokSpeechApiKeyBox" AutomationProperties.Name="Grok Speech API key" />
                         </StackPanel>
                         <StackPanel x:Name="LocalWhisperPanel" Visibility="Collapsed" Margin="0,16,0,0">
-                            <TextBlock Text="Recognize speech, align words and label speakers on this PC. Missing runtime and models download automatically when processing starts; first use can download several GB. Files are verified offline before local recognition and Markdown creation, without an LLM." Style="{StaticResource HelpText}" Margin="0,0,0,16" />
+                            <TextBlock Text="Audio stays on this PC. Required models download on first use and may use several GB." Style="{StaticResource HelpText}" Margin="0,0,0,16" />
                             <StackPanel x:Name="LocalWhisperControls">
-                                <TextBlock Text="English model" Style="{StaticResource FieldLabel}" />
-                                <ComboBox x:Name="EnglishModelBox" DisplayMemberPath="Name" SelectedValuePath="Id" SelectionChanged="LocalModel_SelectionChanged" AutomationProperties.Name="English transcription model" />
-                                <TextBlock Text="Danish model" Style="{StaticResource FieldLabel}" Margin="0,16,0,6" />
-                                <ComboBox x:Name="DanishModelBox" DisplayMemberPath="Name" SelectedValuePath="Id" SelectionChanged="LocalModel_SelectionChanged" AutomationProperties.Name="Danish transcription model" />
-                                <TextBlock Text="The meeting language selects which model to use. Selecting a model does not download it." Style="{StaticResource HelpText}" />
-                                <TextBlock Text="Processing device" Style="{StaticResource FieldLabel}" Margin="0,16,0,6" />
+                                <TextBlock Text="Processing device" Style="{StaticResource FieldLabel}" />
                                 <ComboBox x:Name="LocalDeviceBox" SelectedValuePath="Tag">
                                     <ComboBoxItem Content="Auto" Tag="auto" />
                                     <ComboBoxItem Content="CPU" Tag="cpu" />
                                     <ComboBoxItem Content="NVIDIA GPU (CUDA)" Tag="cuda" />
                                 </ComboBox>
-                                <Button x:Name="DetectLocalButton" Content="Detect best settings for my PC" Style="{StaticResource DeskButton}" HorizontalAlignment="Left" Margin="0,12,0,0" Click="DetectLocal_Click" />
-                                <TextBlock Text="Speaker labels are local to each meeting. Renaming is optional. Overlap, noise and microphone echo can still cause errors." Style="{StaticResource HelpText}" />
-                                <Expander Header="Advanced settings" Margin="0,16,0,0" Foreground="#20252B">
-                                    <StackPanel Margin="0,12,0,0">
+                                <TextBlock Text="English model" Style="{StaticResource FieldLabel}" Margin="0,16,0,6" />
+                                <ComboBox x:Name="EnglishModelBox" DisplayMemberPath="Name" SelectedValuePath="Id" SelectionChanged="LocalModel_SelectionChanged" AutomationProperties.Name="English transcription model" />
+                                <TextBlock Text="Danish model" Style="{StaticResource FieldLabel}" Margin="0,16,0,6" />
+                                <ComboBox x:Name="DanishModelBox" DisplayMemberPath="Name" SelectedValuePath="Id" SelectionChanged="LocalModel_SelectionChanged" AutomationProperties.Name="Danish transcription model" />
+                                <CheckBox x:Name="LocalAdvancedBox" Content="Advanced settings" Margin="0,16,0,0" Foreground="#20252B" />
+                                <StackPanel Margin="0,12,0,0">
+                                    <StackPanel.Style>
+                                        <Style TargetType="StackPanel">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsChecked, ElementName=LocalAdvancedBox}" Value="True">
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </StackPanel.Style>
+                                    <StackPanel>
                                         <TextBlock Text="Precision" Style="{StaticResource FieldLabel}" />
                                         <ComboBox x:Name="LocalComputeBox" SelectedValuePath="Tag">
                                             <ComboBoxItem Content="Auto" Tag="auto" />
@@ -239,23 +243,19 @@
                                             <ComboBoxItem Content="float16 (GPU)" Tag="float16" />
                                             <ComboBoxItem Content="int8 / float16 (GPU)" Tag="int8_float16" />
                                         </ComboBox>
-                                        <TextBlock Text="Batch size (1-32)" Style="{StaticResource FieldLabel}" Margin="0,12,0,6" />
-                                        <TextBox x:Name="LocalBatchBox" />
-                                        <TextBlock Text="CPU threads (1-64)" Style="{StaticResource FieldLabel}" Margin="0,12,0,6" />
-                                        <TextBox x:Name="LocalThreadsBox" />
-                                        <TextBlock Text="GPU index (0 is the first GPU)" Style="{StaticResource FieldLabel}" Margin="0,12,0,6" />
-                                        <TextBox x:Name="LocalGpuBox" />
-                                        <TextBlock Text="Remote speaker count (0 = estimate)" Style="{StaticResource FieldLabel}" Margin="0,12,0,6" />
-                                        <TextBox x:Name="LocalSpeakersBox" />
                                     </StackPanel>
-                                </Expander>
+                                    <StackPanel Margin="0,16,0,0">
+                                        <TextBlock Text="CPU threads (1-64)" Style="{StaticResource FieldLabel}" />
+                                        <TextBox x:Name="LocalThreadsBox" />
+                                    </StackPanel>
+                                    <StackPanel Margin="0,16,0,0">
+                                        <TextBlock Text="GPU index" Style="{StaticResource FieldLabel}" />
+                                        <TextBox x:Name="LocalGpuBox" />
+                                    </StackPanel>
+                                </StackPanel>
                             </StackPanel>
-                            <TextBlock Text="Local files" Style="{StaticResource FieldLabel}" Margin="0,20,0,6" />
-                            <TextBox x:Name="LocalFolderBox" IsReadOnly="True" TextWrapping="Wrap" Height="Auto" MinHeight="36" />
-                            <TextBlock Text="Python, models and caches stay in Recap's AppData folder, separate from the EXE. Allow at least 10 GB free for CPU or 16 GB for GPU setup; larger model choices may need more. A model selected for both languages is downloaded only once. No system Python installation is changed." Style="{StaticResource HelpText}" />
-                            <TextBlock Text="Speaker models download from a GitHub mirror. No Hugging Face login or token is required. Recordings stay on this PC." Style="{StaticResource HelpText}" />
-                            <ProgressBar x:Name="LocalSetupProgress" Height="6" Minimum="0" Maximum="100" Margin="0,8,0,0" />
-                            <TextBlock x:Name="LocalStatusText" Style="{StaticResource HelpText}" />
+                            <ProgressBar x:Name="LocalSetupProgress" Height="6" Minimum="0" Maximum="100" Margin="0,8,0,0" Visibility="Collapsed" />
+                            <TextBlock x:Name="LocalStatusText" Style="{StaticResource HelpText}" Visibility="Collapsed" />
                         </StackPanel>
                     </StackPanel>
                 </Border>
@@ -263,23 +263,12 @@
                 <Border x:Name="LlmSection" Visibility="Collapsed">
                     <StackPanel>
                         <TextBlock Text="Transcript and summary" Style="{StaticResource PanelTitle}" />
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="18" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel>
-                                <TextBlock Text="Provider id" Style="{StaticResource FieldLabel}" />
-                                <ComboBox x:Name="LlmProviderIdBox" SelectedValuePath="Tag">
-                                    <ComboBoxItem Content="OpenAI-compatible" Tag="openai-compatible" />
-                                </ComboBox>
-                            </StackPanel>
-                            <StackPanel Grid.Column="2">
-                                <TextBlock Text="Model / deployment name" Style="{StaticResource FieldLabel}" />
-                                <TextBox x:Name="ModelDeploymentBox" />
-                            </StackPanel>
-                        </Grid>
+                        <TextBlock Text="Provider id" Style="{StaticResource FieldLabel}" />
+                        <ComboBox x:Name="LlmProviderIdBox" SelectedValuePath="Tag">
+                            <ComboBoxItem Content="OpenAI-compatible" Tag="openai-compatible" />
+                        </ComboBox>
+                        <TextBlock Text="Model / deployment name" Style="{StaticResource FieldLabel}" Margin="0,16,0,6" />
+                        <TextBox x:Name="ModelDeploymentBox" />
 
                         <TextBlock Text="Endpoint" Style="{StaticResource FieldLabel}" Margin="0,16,0,6" />
                         <TextBox x:Name="OpenAiEndpointBox" />

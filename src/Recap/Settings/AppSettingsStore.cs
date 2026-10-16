@@ -103,6 +103,8 @@ public sealed class AppSettingsStore
         settings.RecordingProcessing ??= defaults.RecordingProcessing;
         settings.LocalWhisper ??= defaults.LocalWhisper;
         settings.AzureSpeech ??= defaults.AzureSpeech;
+        settings.GrokSpeech ??= defaults.GrokSpeech;
+        if (string.IsNullOrWhiteSpace(settings.GrokSpeech.Model)) settings.GrokSpeech.Model = GrokSpeechSettings.DefaultModel;
         settings.OpenAiCompatible ??= defaults.OpenAiCompatible;
 
         if (string.IsNullOrWhiteSpace(settings.AzureSpeech.ResourceName)) settings.AzureSpeech.ResourceName = defaults.AzureSpeech.ResourceName;
