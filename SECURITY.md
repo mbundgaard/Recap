@@ -33,6 +33,13 @@ The Python environment isolates dependencies, not operating-system privileges: i
 the current user and loads third-party code/model files. Do not substitute untrusted models
 or dependencies. Local intermediate transcripts contain meeting content and must remain private.
 
+The pinned ML stack has outstanding dependency advisories. The Danish aligner uses a
+fixed model revision and explicit eager attention, rejects quantization configuration,
+and disables remote code/custom kernels to mitigate the reviewed configuration-loading
+path. This does not patch upstream packages or constitute a complete security audit.
+See the [dependency security review](docs/dependency-security-review.md) for affected
+versions, applicability evidence, limitations and upgrade constraints.
+
 ## Local agent API
 
 Recap starts a local HTTP listener on a randomly assigned IPv4 loopback port. It never

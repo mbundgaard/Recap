@@ -563,7 +563,7 @@ public partial class MainWindow : Window
         if (Recap.LocalWhisper.LocalWhisperRuntime.SetupRunning)
         {
             e.Cancel = true;
-            MessageBox.Show(this, "Cancel local model setup in Settings (or through the API), or wait for it to finish before closing.", "Local Whisper setup is running");
+            MessageBox.Show(this, "Cancel the processing meeting, use the API to cancel standalone model setup, or wait for setup to finish before closing.", "Local Whisper setup is running");
             return;
         }
         if (_meetingWindows.Values.Any(window => window.IsBusy && !window.IsSpeechProcessing))

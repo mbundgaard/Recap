@@ -62,6 +62,43 @@ class WorkerTests(unittest.TestCase):
             self.assertIsInstance(language, ast.Name)
             self.assertEqual(language.id, 'language')
 
+    def test_danish_alignment_security_contract(self):
+        tree = ast.parse(source.read_text(encoding='utf-8'))
+        helper = next(node for node in tree.body if isinstance(node, ast.FunctionDef)
+                      and node.name == 'load_danish_alignment')
+        self.assertEqual(worker.DANISH_ALIGNMENT_REVISION, '7a60985d596e7a9e26b01a0707fe59daac6ffe84')
+        assignments = [node for node in helper.body if isinstance(node, ast.Assign)]
+        options = next(node.value for node in assignments
+                       if any(isinstance(target, ast.Name) and target.id == 'options' for target in node.targets))
+        options_kw = {keyword.arg: keyword.value for keyword in options.keywords}
+        self.assertEqual(ast.unparse(options_kw['revision']), 'DANISH_ALIGNMENT_REVISION')
+        self.assertIs(ast.literal_eval(options_kw['trust_remote_code']), False)
+        self.assertEqual(ast.unparse(options_kw['local_files_only']), 'offline')
+        calls = {node.func.value.id: node for node in ast.walk(helper)
+                 if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                 and node.func.attr == 'from_pretrained' and isinstance(node.func.value, ast.Name)}
+        self.assertEqual(set(calls), {'Wav2Vec2Config', 'Wav2Vec2Processor', 'Wav2Vec2ForCTC'})
+        for call in calls.values():
+            self.assertEqual(ast.unparse(call.args[0]), "ALIGN_MODELS['da']")
+            self.assertTrue(any(keyword.arg is None and ast.unparse(keyword.value) == 'options'
+                                for keyword in call.keywords))
+        model = calls['Wav2Vec2ForCTC']
+        model_kw = {keyword.arg: keyword.value for keyword in model.keywords}
+        for name, expected in [('attn_implementation', 'eager'), ('use_kernels', False), ('weights_only', True)]:
+            self.assertEqual(ast.literal_eval(model_kw[name]), expected)
+        self.assertEqual(ast.unparse(model_kw['config']), 'config')
+        eager = next(node for node in assignments
+                     if any(ast.unparse(target) == 'config._attn_implementation' for target in node.targets))
+        self.assertEqual(ast.literal_eval(eager.value), 'eager')
+        self.assertLess(calls['Wav2Vec2Config'].lineno, eager.lineno)
+        self.assertLess(eager.lineno, model.lineno)
+        guard = next(node for node in helper.body if isinstance(node, ast.If)
+                     and 'quantization_config' in ast.unparse(node.test))
+        self.assertEqual(ast.unparse(guard.test), "getattr(config, 'quantization_config', None) is not None")
+        self.assertTrue(any(isinstance(node, ast.Raise) for node in guard.body))
+        self.assertLess(guard.lineno, calls['Wav2Vec2Processor'].lineno)
+        self.assertLess(guard.lineno, model.lineno)
+
     def test_resident_same_language_reuses_all_models(self):
         cache = worker.ResidentModels()
         loaders = {role: Mock(side_effect=lambda: Mock()) for role in ('asr', 'align', 'diarization')}

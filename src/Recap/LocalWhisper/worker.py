@@ -16,6 +16,24 @@ OUTPUT = sys.stdout
 ENGINE = 1
 ALIGN_MODELS = {"en": "WAV2VEC2_ASR_BASE_960H", "da": "saattrupdan/wav2vec2-xls-r-300m-ftspeech"}
 MODELS = {"tiny", "base", "small", "medium", "large-v3"}
+DANISH_ALIGNMENT_REVISION = "7a60985d596e7a9e26b01a0707fe59daac6ffe84"
+
+
+def load_danish_alignment(root, device, offline):
+    # Do not let a downloaded config select Hub attention kernels (GHSA-29pf).
+    # An explicit class, revision and eager implementation avoid remote-code hooks.
+    from transformers import Wav2Vec2Config, Wav2Vec2Processor, Wav2Vec2ForCTC
+    options = dict(cache_dir=str(Path(root) / "models/alignment"), local_files_only=offline,
+                   revision=DANISH_ALIGNMENT_REVISION, trust_remote_code=False)
+    config = Wav2Vec2Config.from_pretrained(ALIGN_MODELS["da"], **options)
+    config._attn_implementation = "eager"
+    if getattr(config, "quantization_config", None) is not None:
+        raise ValueError("The Danish aligner must use its unquantized configuration")
+    processor = Wav2Vec2Processor.from_pretrained(ALIGN_MODELS["da"], **options)
+    model = Wav2Vec2ForCTC.from_pretrained(ALIGN_MODELS["da"], config=config,
+        attn_implementation="eager", use_kernels=False, weights_only=True, **options).to(device)
+    return model, {"language": "da", "type": "huggingface",
+                   "dictionary": {char.lower(): code for char, code in processor.tokenizer.get_vocab().items()}}
 
 
 def emit(kind, **values):
@@ -232,6 +250,8 @@ def run(request, resident=None):
             asr_options={"beam_size": 5, "condition_on_previous_text": False})
 
     def load_alignment(language):
+        if language == "da":
+            return load_danish_alignment(root, torch_device, offline)
         return whisperx.load_align_model(language, torch_device, model_name=ALIGN_MODELS[language],
             model_dir=str(root / "models/alignment"), model_cache_only=offline)
 
