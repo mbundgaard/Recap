@@ -94,7 +94,6 @@ public sealed class AzureOpenAiProvider(OpenAiCompatibleSettings settings) : IAi
             model = settings.ModelOrDeploymentName,
             instructions,
             input,
-            max_output_tokens = 16000,
             store = false
         });
         using var response = await Client.SendAsync(message, cancellationToken);
